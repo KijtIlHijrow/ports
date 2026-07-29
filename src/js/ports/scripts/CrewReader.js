@@ -366,8 +366,12 @@ export default class CrewReader
 		for(let i = 0; i < attempts.length; i++){
 			let attempt = CrewReader.normalise(attempts[i]);
 
-			// Too short to tell "Merchant" from "Jade Merchant"
-			if(attempt.length < 5){continue;}
+			// This font truncates badly — "Smuggler" can come back as just
+			// "$MUG" — so short reads have to be usable. Three characters is
+			// enough because 35 of the 44 three-letter prefixes are unique to
+			// one crew, and the margin check below throws out the rest rather
+			// than picking between them.
+			if(attempt.length < 3){continue;}
 
 			for(let n = 0; n < this.crewNames.length; n++){
 				let name = this.crewNames[n];
@@ -394,12 +398,27 @@ export default class CrewReader
 	}
 
 	/**
-	 * Strip everything the OCR is unreliable about: case, spacing, punctuation
+	 * Strip everything the OCR is unreliable about: case, spacing, punctuation.
+	 *
+	 * A few glyphs come back as consistent lookalikes rather than noise, so map
+	 * those back before discarding punctuation — "Smuggler" reads as "$MUG", and
+	 * stripping the dollar leaves "MUG", which prefixes nothing.
+	 *
+	 * Crew names contain no digits, so the digit rules only ever affect what the
+	 * OCR returned, never the name being compared against.
+	 *
 	 * @param  {string} value
 	 * @return {string}
 	 */
 	static normalise(value){
-		return String(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
+		return String(value)
+			.toUpperCase()
+			.replace(/\$/g, 'S')
+			.replace(/5/g, 'S')
+			.replace(/0/g, 'O')
+			.replace(/1/g, 'I')
+			.replace(/8/g, 'B')
+			.replace(/[^A-Z]/g, '');
 	}
 
 	/**
@@ -413,9 +432,15 @@ export default class CrewReader
 		if(a === b){return 1;}
 
 		// The OCR frequently truncates the name, so a clean prefix is strong
-		// evidence, scaled by how much of the name we actually got
+		// evidence, scaled by how much of it we got.
+		//
+		// Scale by the length of the read, NOT by the length of the candidate.
+		// Dividing by the candidate would score a short name above a long one on
+		// the same prefix, so "TRA" would pick Trader over Travelling Drunk on
+		// nothing but brevity. Scoring every candidate sharing a prefix equally
+		// lets the margin check below reject the whole ambiguous set.
 		if(b.indexOf(a) === 0){
-			return 0.75 + 0.25 * (a.length / b.length);
+			return 0.75 + 0.25 * Math.min(1, a.length / 8);
 		}
 
 		let distance = CrewReader.levenshtein(a, b);
