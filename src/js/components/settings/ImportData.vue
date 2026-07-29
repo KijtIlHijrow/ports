@@ -21,10 +21,15 @@
 				fileReader.onload = () => {
 					let data = JSON.parse(fileReader.result);
 
-					this.$root.captains = data.captains;
-					this.$root.crew = data.crew;
-					this.$root.parts = data.parts;
-					this.$root.shipwright = data.shipwright;
+					// Only take what the file actually carries. Assigning a key
+					// that is absent replaces good data with undefined, which
+					// makes a partial file, such as one restoring only a roster,
+					// destroy everything it does not mention.
+					['captains', 'crew', 'parts', 'shipwright'].forEach(key => {
+						if(data[key] !== undefined){
+							this.$root[key] = data[key];
+						}
+					});
 
 					this.$root.save();
 				}

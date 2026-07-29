@@ -22,16 +22,15 @@
 				<p>{{ $root.result.parts.hull.name }}</p>
 			</div>
 
-			<div class="w-1/2 flex items-center">
-				<!-- Assign to ship : 
-				
+			<div class="w-1/2 flex items-center justify-end">
+				<span class="text-sm">Sent on ship :</span>
+
 				<div class="flex ml-2">
 					<button class="text-white border border-white w-6 h-6 text-sm rounded-full mr-1" @click="assignToShip(1)">1</button>
 					<button class="text-white border border-white w-6 h-6 text-sm rounded-full mr-1" @click="assignToShip(2)">2</button>
 					<button class="text-white border border-white w-6 h-6 text-sm rounded-full mr-1" @click="assignToShip(3)">3</button>
 					<button class="text-white border border-white w-6 h-6 text-sm rounded-full" @click="assignToShip(4)">4</button>
-				</div> -->
-				<button class="text-white border border-white text-sm rounded-full" @click="assignToShip(1)">Clear Roster to calculate next journey</button>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -54,9 +53,16 @@
 
 		methods: {
 			/**
-			 * Assign the selected crew to a ship
-			 * @param  {int} number 
-			 * @return {void}        
+			 * Mark this captain and crew as sailing on the given ship, which
+			 * takes them out of the next calculation without discarding them.
+			 *
+			 * This used to wipe the whole roster afterwards, throwing away the
+			 * assignment it had just worked out along with every crew member the
+			 * player had entered. Excluding a ship's crew is what the "Clear
+			 * ship" buttons on the main screen undo.
+			 *
+			 * @param  {int} number
+			 * @return {void}
 			 */
 			assignToShip(number){
 				this.$root.captains.forEach(captain => {	
@@ -81,7 +87,6 @@
 					}
 				});
 
-				this.$root.clearRoster();
 				this.$root.save();
 				this.hide();
 			},
