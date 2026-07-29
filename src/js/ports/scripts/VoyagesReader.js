@@ -1,4 +1,5 @@
 import { voyageListModern } from '../data/skins';
+import DigitReader from './DigitReader';
 
 export default class VoyagesReader
 {
@@ -45,22 +46,28 @@ export default class VoyagesReader
 			{
 				name: 'modern',
 				image: 'voyageListModern',
-				details: {x: 52, y: 260},
+				details: {x: 52, y: 268},
 				coordinates: Object.assign({}, this.coordinates, {time: {x: 278, y: 165}}),
+				// See DigitReader: no OCR font can read the current client's numbers
+				digits: true,
 			},
 			{
 				name: 'default',
 				image: 'voyageList',
 				details: {x: 375, y: 270},
 				coordinates: this.coordinates,
+				digits: false,
 			},
 			{
 				name: 'legacy',
 				image: 'legacyVoyageList',
 				details: {x: 50, y: 270},
 				coordinates: this.coordinates,
+				digits: false,
 			},
 		];
+
+		this.digitReader = new DigitReader();
 	}
 
 	read(){
@@ -105,10 +112,18 @@ export default class VoyagesReader
 		//let seafaring = OCR.readLine(buffer, this.fonts.mono, this.colors.white, this.coordinates.seafaring.x, this.coordinates.seafaring.y, true, true).text;
 		//let time = OCR.readLine(buffer, this.fonts.mono, this.colors.white, this.coordinates.time.x, this.coordinates.time.y, true, true).text;
 
-		let moraleAttempts = this.getAttempts(buffer, coordinates.morale.x, coordinates.morale.y);
-		let combatAttempts = this.getAttempts(buffer, coordinates.combat.x, coordinates.combat.y);
-		let seafaringAttempts = this.getAttempts(buffer, coordinates.seafaring.x, coordinates.seafaring.y);
-		let timeAttempts = this.getAttempts(buffer, coordinates.time.x, coordinates.time.y);
+		let attemptsFor = (name) => skin.digits
+			? [this.digitReader.read(buffer, coordinates[name].x, coordinates[name].y, false)].filter(Boolean)
+			: this.getAttempts(buffer, coordinates[name].x, coordinates[name].y);
+
+		let moraleAttempts = attemptsFor('morale');
+		let combatAttempts = attemptsFor('combat');
+		let seafaringAttempts = attemptsFor('seafaring');
+		// The duration is "1:20", not a plain number, so the digit matcher has
+		// to keep what it can read rather than reject the colon
+		let timeAttempts = skin.digits
+			? [this.digitReader.read(buffer, coordinates.time.x, coordinates.time.y, true)].filter(Boolean)
+			: this.getAttempts(buffer, coordinates.time.x, coordinates.time.y);
 
 		let checkAttempts = [];
 		checkAttempts.push(moraleAttempts)
@@ -137,14 +152,22 @@ export default class VoyagesReader
 		let attempts = [];
 		let endX = startX + 60;
 
-		for(let findX = startX; findX < endX ; findX++){
-			let attempt = OCR.readLine(buffer, this.fonts.mono, this.colors.white, findX, startY, true, true).text;
-			
-			if(attempt){
-				attempts.push(attempt);
+		// readLine wants the exact baseline. Sweep a few rows either side so a
+		// skin sitting slightly off still reads; the rows are 31px apart, so
+		// this cannot stray onto a neighbouring stat.
+		let offsets = [0, -1, 1, -2, 2, -3, 3];
+
+		for(let i = 0; i < offsets.length; i++){
+			let findY = startY + offsets[i];
+
+			for(let findX = startX; findX < endX ; findX++){
+				let attempt = OCR.readLine(buffer, this.fonts.mono, this.colors.white, findX, findY, true, true).text;
+
+				if(attempt){
+					attempts.push(attempt);
+				}
 			}
 		}
-
 
 		return attempts;
 	}

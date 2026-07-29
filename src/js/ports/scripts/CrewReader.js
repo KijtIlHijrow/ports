@@ -1,5 +1,6 @@
 import { closeCrewModern } from '../data/skins';
 import crewRegions from '../data/crew.json';
+import DigitReader from './DigitReader';
 
 export default class CrewReader
 {
@@ -55,10 +56,13 @@ export default class CrewReader
 			{
 				name: 'modern',
 				image: 'closeCrewModern',
-				details: {x: 263, y: 18, width: 195, height: 120},
+				details: {x: 263, y: 26, width: 195, height: 120},
 				grid: {x: -100, y: 38, tile: 53},
 				nameColors: ['tan', 'orange'],
-				coordinates: Object.assign({}, this.coordinates, {level: {x: 11, y: 87}}),
+				coordinates: Object.assign({}, this.coordinates, {level: {x: 11, y: 94}}),
+				// The current client anti-aliases its numbers and no OCR font
+				// can read them, so match the digits directly instead
+				digits: true,
 			},
 			{
 				name: 'legacy',
@@ -67,8 +71,11 @@ export default class CrewReader
 				grid: {x: -87, y: 40, tile: 53},
 				nameColors: ['orange'],
 				coordinates: this.coordinates,
+				digits: false,
 			},
 		];
+
+		this.digitReader = new DigitReader();
 
 		// Every crew name the calculator knows about, for fuzzy-matching what the
 		// OCR returns. Matching garbled text against a hand-written list of exact
@@ -118,8 +125,10 @@ export default class CrewReader
 		let detailsImage = a1lib.bindregion(x, y, width, height);
 		let buffer = detailsImage.toData(x, y , width, height);
 
-		let level = this.getStat(buffer, coordinates.level.x, coordinates.level.y);
-		level = level.split(' ')[1];
+		let level = skin.digits
+			// "Level 3" — only the digits are wanted, and the word never matches
+			? this.digitReader.read(buffer, coordinates.level.x, coordinates.level.y, true)
+			: (this.getStat(buffer, coordinates.level.x, coordinates.level.y) || '').split(' ')[1];
 
 		let captain = this.isCaptain(detailsImage);
 		let type = {};
@@ -131,12 +140,16 @@ export default class CrewReader
 			type = this.getType(buffer, skin);
 		}
 
+		let stat = (name) => skin.digits
+			? this.digitReader.read(buffer, coordinates[name].x, coordinates[name].y, false)
+			: this.getStat(buffer, coordinates[name].x, coordinates[name].y);
+
 		this.result = {
 			type: type,
-			morale: this.getStat(buffer, coordinates.morale.x, coordinates.morale.y) || 0,
-			combat: this.getStat(buffer, coordinates.combat.x, coordinates.combat.y) || 0,
-			seafaring: this.getStat(buffer, coordinates.seafaring.x, coordinates.seafaring.y) || 0,
-			speed: this.getStat(buffer, coordinates.speed.x, coordinates.speed.y) || 0,
+			morale: stat('morale') || 0,
+			combat: stat('combat') || 0,
+			seafaring: stat('seafaring') || 0,
+			speed: stat('speed') || 0,
 			level: level || 0,
 			skin: skin.name,
 			tile: skin.grid.tile,
@@ -155,6 +168,28 @@ export default class CrewReader
 	 * @return {string}        
 	 */
 	getStat(buffer, x, y){
+		// OCR.readLine wants the exact baseline, and a miss returns nothing at
+		// all rather than something wrong, so sweep outwards from the measured
+		// position. A skin whose rows sit a pixel or two off still reads.
+		let offsets = [0, -1, 1, -2, 2, -3, 3];
+
+		for(let i = 0; i < offsets.length; i++){
+			let value = this.readStat(buffer, x, y + offsets[i]);
+
+			if(value){return value;}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Read a single value at an exact baseline, trying every colour it may use
+	 * @param  {ImageData} buffer
+	 * @param  {int} x
+	 * @param  {int} y
+	 * @return {string}
+	 */
+	readStat(buffer, x, y){
 		// The text color will either be white (level), cream (same stat), green
 		// (better) or red (worse). Because of this we need to check them all
 		let value = OCR.readLine(buffer, this.fonts.mono, this.colors.white, x, y, true, true).text;
@@ -267,22 +302,26 @@ export default class CrewReader
 		// This is a bit messed up. Because the font used for the type name is
 		// sketchy, the OCR has a hard time finding an exact match. Keep trying
 		// different X coordinates until we find something that we can identify
+		let baselines = [37, 36, 38];
+
 		for(let c = 0; c < colors.length; c++){
 			let color = this.colors[colors[c]];
 
-			for(let findX = 40; findX < 100; findX++){
-				let attempt = OCR.readLine(buffer, this.fonts.heavy, color, findX, 37, true, true).text;
+			for(let b = 0; b < baselines.length; b++){
+				for(let findX = 40; findX < 100; findX++){
+					let attempt = OCR.readLine(buffer, this.fonts.heavy, color, findX, baselines[b], true, true).text;
 
-				if(!attempt){continue;}
+					if(!attempt){continue;}
 
-				attempts.push(attempt);
+					attempts.push(attempt);
 
-				// Exact hit against a known misreading, cheapest possible answer
-				let key = Object.keys(types).indexOf(attempt);
+					// Exact hit against a known misreading, cheapest answer
+					let key = Object.keys(types).indexOf(attempt);
 
-				if(key != -1){
-					let values = Object.values(types);
-					return {name: values[key], found: true};
+					if(key != -1){
+						let values = Object.values(types);
+						return {name: values[key], found: true};
+					}
 				}
 			}
 		}
