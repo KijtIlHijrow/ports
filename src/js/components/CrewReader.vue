@@ -1,10 +1,11 @@
 <template>
 	<modal v-if="showModal" @close="showModal = false" w="80%">
-		<h3 slot="title">Could not find the crew member type</h3>
+		<h3 slot="title">Could not read the crew type</h3>
 		<div class="p-4">
-			<p class="text-white">The reader could not find the crew type. Please copy the data in the box below and send it to leejay10 on Discord</p>
+			<p class="text-white">The stats were read, but the type was not. Click this crew member and pick the type from the dropdown &mdash; it will be recognised automatically from now on.</p>
 
-			<textarea v-html="attempts" class="text-gray-800 mt-4 w-full" rows="8" @click.prevent="selectText"></textarea>
+			<p class="text-white text-sm mt-3 opacity-75">The reader saw:</p>
+			<textarea v-html="attempts" class="text-gray-800 mt-1 w-full" rows="5" @click.prevent="selectText"></textarea>
 
 			<button class="inline-block text-white border border-white p-1 mt-6" @click.prevent="showModal = false;">Done, close</button>
 		</div>
@@ -111,11 +112,6 @@
 						return;
 					}
 
-					// A crew tile, so an unreadable type is worth reporting
-					if(!result.type.found){
-						this.showMissingTypeModal(result.type);
-					}
-
 					let conversions = {
 						6:  {x: 2, y: 1},
 						7:  {x: 3, y: 1},
@@ -159,11 +155,22 @@
 									crew.seafaring = result.seafaring;
 									crew.level = result.level;
 
-									this.types.forEach(type => {
-										if(type.name == result.type.name){
-											crew.type = type;
-										}
-									});
+									if(result.type.found){
+										this.types.forEach(type => {
+											if(type.name == result.type.name){
+												crew.type = type;
+											}
+										});
+									} else {
+										// Note which slot needs naming, so that picking
+										// its type teaches the reader this garbling
+										this.$root.unidentified = {
+											id: crew.id,
+											attempts: result.type.attempts || [],
+										};
+
+										this.showMissingTypeModal(result.type);
+									}
 
 									this.$root.save();
 								}

@@ -82,9 +82,15 @@
 		methods: {
 			/**
 			 * Whenever something is modified, save the data to localStorage
-			 * @return {void} 
+			 * @return {void}
 			 */
 			update(){
+				// Naming a crew member the reader could not identify teaches it
+				// what that garbled read means, so it resolves unaided next time
+				if(!this.isCaptain && this.model.type){
+					this.$root.learnType(this.model.id, this.model.type.name);
+				}
+
 				this.$root.save();
 			},
 

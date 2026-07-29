@@ -339,6 +339,16 @@ export default class CrewReader
 			}
 		}
 
+		// Anything the player has already identified by hand. These are worth more
+		// than a guess: they came from a human looking at the same crew member.
+		let learned = this.learned();
+
+		for(let i = 0; i < cleanAttempts.length; i++){
+			if(learned[cleanAttempts[i]]){
+				return {name: learned[cleanAttempts[i]], found: true, learned: true};
+			}
+		}
+
 		// Nothing matched exactly, so fall back to the closest real crew name.
 		// The OCR garbles this font badly ("EASTErN MUSK; TEEr"), but the damage
 		// is consistent enough that the right name is still much the nearest.
@@ -353,6 +363,24 @@ export default class CrewReader
 			found: false,
 			attempts: cleanAttempts,
 		};
+	}
+
+	/**
+	 * Crew types the player has identified by hand, keyed by what the OCR read
+	 *
+	 * The name font defeats the OCR the same way the numbers do, and letters are
+	 * too large an alphabet to template-match from the few names a screenshot
+	 * happens to contain. Remembering a correction instead means each crew type
+	 * needs naming once and is recognised from then on.
+	 *
+	 * @return {object}
+	 */
+	learned(){
+		try {
+			return JSON.parse(localStorage.getItem('learnedTypes')) || {};
+		} catch(e) {
+			return {};
+		}
 	}
 
 	/**

@@ -77,6 +77,10 @@ const app = new Vue({
 
             // Currently selected crew member
             selected: null,
+
+            // The last read whose crew type could not be identified, so that
+            // naming it by hand can teach the reader what that garbling means
+            unidentified: null,
     	}
     },
 
@@ -252,6 +256,35 @@ const app = new Vue({
 
             this.attempts = JSON.parse(attempts);
         },  
+
+        /**
+         * Remember that this crew member reads as the given type, so the reader
+         * recognises it next time without being told again
+         * @param  {int} id   the crew slot that was just read
+         * @param  {string} name crew type the player picked
+         * @return {void}
+         */
+        learnType(id, name){
+            let pending = this.unidentified;
+
+            if(!pending || pending.id !== id || !pending.attempts.length){return;}
+            if(!name || name === 'Empty'){return;}
+
+            let learned = {};
+
+            try {
+                learned = JSON.parse(localStorage.getItem('learnedTypes')) || {};
+            } catch(e) {
+                learned = {};
+            }
+
+            pending.attempts.forEach(attempt => {
+                learned[attempt] = name;
+            });
+
+            localStorage.setItem('learnedTypes', JSON.stringify(learned));
+            this.unidentified = null;
+        },
 
         /**
          * Flash an error to the top of the screen
