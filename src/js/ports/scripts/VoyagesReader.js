@@ -1,7 +1,15 @@
+import { voyageListModern } from '../data/skins';
+
 export default class VoyagesReader
 {
 	constructor(){
 		this.images = {};
+
+		// Same title on the current interface skin, which the old references
+		// cannot match because findsubimg compares pixels exactly
+		ImageData.fromBase64((i) => {
+			this.images.voyageListModern = i;
+		}, voyageListModern);
 
 		// "Voyage list" text, we use this as a reference for the interface
 		ImageData.fromBase64((i) => {
@@ -28,26 +36,62 @@ export default class VoyagesReader
 			seafaring: {x: 318, y: 128},
 			time: {x: 299, y: 165},
 		}
+
+		// The adversity block sits at the same place relative to the detail
+		// region on every skin; only the anchor and its offset differ. On the
+		// current skin the title is centred rather than left-aligned, which is
+		// why its x offset is so much smaller.
+		this.skins = [
+			{
+				name: 'modern',
+				image: 'voyageListModern',
+				details: {x: 52, y: 260},
+				coordinates: Object.assign({}, this.coordinates, {time: {x: 278, y: 165}}),
+			},
+			{
+				name: 'default',
+				image: 'voyageList',
+				details: {x: 375, y: 270},
+				coordinates: this.coordinates,
+			},
+			{
+				name: 'legacy',
+				image: 'legacyVoyageList',
+				details: {x: 50, y: 270},
+				coordinates: this.coordinates,
+			},
+		];
 	}
 
 	read(){
 		let fullImage = a1lib.bindfullrs();
-		let interfacePosition = a1lib.findsubimg(fullImage, this.images.voyageList);
+		let skin = null, interfacePosition = null;
 
-		console.log("Interface Position", interfacePosition.length);
+		for(let i = 0; i < this.skins.length; i++){
+			let candidate = this.skins[i];
+			let reference = this.images[candidate.image];
 
-		if(!interfacePosition.length){
-			interfacePosition = a1lib.findsubimg(fullImage, this.images.legacyVoyageList);
-			if(!interfacePosition.length){
-				return false;
-			}else{
-				this.legacy = true;
+			// The base64 decode is async, so a reference may not be ready yet
+			if(!reference){continue;}
+
+			let position = a1lib.findsubimg(fullImage, reference);
+
+			if(position.length){
+				skin = candidate;
+				interfacePosition = position;
+				break;
 			}
 		}
 
-		let offsetX = this.legacy ? 50 : 375;
-		let x = interfacePosition[0].x + offsetX;
-		let y = interfacePosition[0].y + 270
+		if(!skin){
+			return false;
+		}
+
+		this.legacy = skin.name === 'legacy';
+
+		let coordinates = skin.coordinates;
+		let x = interfacePosition[0].x + skin.details.x;
+		let y = interfacePosition[0].y + skin.details.y;
 		let width = 370;
 		let height = 200;
 
@@ -61,10 +105,10 @@ export default class VoyagesReader
 		//let seafaring = OCR.readLine(buffer, this.fonts.mono, this.colors.white, this.coordinates.seafaring.x, this.coordinates.seafaring.y, true, true).text;
 		//let time = OCR.readLine(buffer, this.fonts.mono, this.colors.white, this.coordinates.time.x, this.coordinates.time.y, true, true).text;
 
-		let moraleAttempts = this.getAttempts(buffer, this.coordinates.morale.x, this.coordinates.morale.y);
-		let combatAttempts = this.getAttempts(buffer, this.coordinates.combat.x, this.coordinates.combat.y);
-		let seafaringAttempts = this.getAttempts(buffer, this.coordinates.seafaring.x, this.coordinates.seafaring.y);
-		let timeAttempts = this.getAttempts(buffer, this.coordinates.time.x, this.coordinates.time.y);
+		let moraleAttempts = this.getAttempts(buffer, coordinates.morale.x, coordinates.morale.y);
+		let combatAttempts = this.getAttempts(buffer, coordinates.combat.x, coordinates.combat.y);
+		let seafaringAttempts = this.getAttempts(buffer, coordinates.seafaring.x, coordinates.seafaring.y);
+		let timeAttempts = this.getAttempts(buffer, coordinates.time.x, coordinates.time.y);
 
 		let checkAttempts = [];
 		checkAttempts.push(moraleAttempts)
@@ -82,6 +126,7 @@ export default class VoyagesReader
 			combat: combat ? combat : 0,
 			seafaring: seafaring ? seafaring : 0,
 			time: time,
+			skin: skin.name,
 			checkAttempts: checkAttempts,
 		}
 

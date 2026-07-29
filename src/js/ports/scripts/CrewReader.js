@@ -1,7 +1,17 @@
+import { closeCrewModern } from '../data/skins';
+import crewRegions from '../data/crew.json';
+
 export default class CrewReader
 {
 	constructor(){
 		this.images = {};
+
+		// Same button on the current interface skin. The match is exact, so the
+		// old blue reference below is never found on a modern client and vice
+		// versa; keeping both means either skin works.
+		ImageData.fromBase64((i) => {
+			this.images.closeCrewModern = i;
+		}, closeCrewModern);
 
 		// "Close crew" button, we use this as a reference for the interface
 		ImageData.fromBase64((i) => {
@@ -25,6 +35,9 @@ export default class CrewReader
 			green: [0, 255, 0],
 			red: [255, 0, 0],
 			cream: [247, 237, 183],
+			// The current skin draws the crew name in a paler tan than the old
+			// skin's orange, far enough apart that the orange never matches it
+			tan: [240, 190, 121],
 		}
 
 		this.coordinates = {
@@ -34,49 +47,101 @@ export default class CrewReader
 			speed: {x: 122, y: 94},
 			level: {x: 11, y: 96},
 		}
+
+		// Everything the reader needs is measured from the "Close crew" button,
+		// so each skin carries its own offsets. The stat block sits at the same
+		// relative spot on both skins; only the anchor and the name colour moved.
+		this.skins = [
+			{
+				name: 'modern',
+				image: 'closeCrewModern',
+				details: {x: 263, y: 18, width: 195, height: 120},
+				grid: {x: -100, y: 38, tile: 53},
+				nameColors: ['tan', 'orange'],
+				coordinates: Object.assign({}, this.coordinates, {level: {x: 11, y: 87}}),
+			},
+			{
+				name: 'legacy',
+				image: 'closeCrew',
+				details: {x: 275, y: 150, width: 195, height: 120},
+				grid: {x: -87, y: 40, tile: 53},
+				nameColors: ['orange'],
+				coordinates: this.coordinates,
+			},
+		];
+
+		// Every crew name the calculator knows about, for fuzzy-matching what the
+		// OCR returns. Matching garbled text against a hand-written list of exact
+		// misreadings only ever covered 26 of the 58 crew, and each new entry had
+		// to be captured from a live client.
+		this.crewNames = ['Empty'].concat(
+			crewRegions.reduce((all, region) => all.concat(region.sailors.map(s => s[1])), [])
+		);
 	}
 
 	read(){
 		let fullImage = a1lib.bindfullrs();
-		let interfacePosition = a1lib.findsubimg(fullImage, this.images.closeCrew);
+		let skin = null, interfacePosition = null;
 
-		if(!interfacePosition.length){
+		for(let i = 0; i < this.skins.length; i++){
+			let candidate = this.skins[i];
+			let reference = this.images[candidate.image];
+
+			// The base64 decode is async, so a reference may not be ready yet
+			if(!reference){continue;}
+
+			let position = a1lib.findsubimg(fullImage, reference);
+
+			if(position.length){
+				skin = candidate;
+				interfacePosition = position;
+				break;
+			}
+		}
+
+		if(!skin){
+			this.result = null;
 			return false;
 		}
 
-		alt1.overLayRect(a1lib.mixcolor(255, 255, 255), interfacePosition[0].x - 87, interfacePosition[0].y + 40, 350, 350, 2000, 1);
+		let coordinates = skin.coordinates;
+		let gridX = interfacePosition[0].x + skin.grid.x;
+		let gridY = interfacePosition[0].y + skin.grid.y;
 
-		let x = interfacePosition[0].x + 275;
-		let y = interfacePosition[0].y + 150
-		let width = 195;
-		let height = 120;
+		alt1.overLayRect(a1lib.mixcolor(255, 255, 255), gridX, gridY, 350, 350, 2000, 1);
+
+		let x = interfacePosition[0].x + skin.details.x;
+		let y = interfacePosition[0].y + skin.details.y;
+		let width = skin.details.width;
+		let height = skin.details.height;
 
 		let detailsImage = a1lib.bindregion(x, y, width, height);
-		let buffer = detailsImage.toData(x, y , width, height);				
+		let buffer = detailsImage.toData(x, y , width, height);
 
-		let level = this.getStat(buffer, this.coordinates.level.x, this.coordinates.level.y);
+		let level = this.getStat(buffer, coordinates.level.x, coordinates.level.y);
 		level = level.split(' ')[1];
 
 		let captain = this.isCaptain(detailsImage);
-		let data = this.getType(buffer);
 		let type = {};
 
 		if(captain){
 			type.name = 'captain';
 			type.found = true;
 		} else {
-			type = this.getType(buffer);
+			type = this.getType(buffer, skin);
 		}
 
 		this.result = {
 			type: type,
-			morale: this.getStat(buffer, this.coordinates.morale.x, this.coordinates.morale.y) || 0,
-			combat: this.getStat(buffer, this.coordinates.combat.x, this.coordinates.combat.y) || 0,
-			seafaring: this.getStat(buffer, this.coordinates.seafaring.x, this.coordinates.seafaring.y) || 0,
-			speed: this.getStat(buffer, this.coordinates.speed.x, this.coordinates.speed.y) || 0,
+			morale: this.getStat(buffer, coordinates.morale.x, coordinates.morale.y) || 0,
+			combat: this.getStat(buffer, coordinates.combat.x, coordinates.combat.y) || 0,
+			seafaring: this.getStat(buffer, coordinates.seafaring.x, coordinates.seafaring.y) || 0,
+			speed: this.getStat(buffer, coordinates.speed.x, coordinates.speed.y) || 0,
 			level: level || 0,
-			foundX: interfacePosition[0].x - 87,
-			foundY: interfacePosition[0].y + 40,
+			skin: skin.name,
+			tile: skin.grid.tile,
+			foundX: gridX,
+			foundY: gridY,
 		}
 
 		return true;
@@ -112,10 +177,11 @@ export default class CrewReader
 
 	/**
 	 * Find the type of crew member
-	 * @param  {ImageData} buffer 
-	 * @return {string}        
+	 * @param  {ImageData} buffer
+	 * @param  {object} skin
+	 * @return {string}
 	 */
-	getType(buffer){		
+	getType(buffer, skin){
 		let types = {
 			' EMpTY SLOT' : 'Empty',
 			//The Arc
@@ -196,18 +262,24 @@ export default class CrewReader
 		};
 
 		let attempts = [];
+		let colors = (skin && skin.nameColors) ? skin.nameColors : ['orange'];
 
 		// This is a bit messed up. Because the font used for the type name is
 		// sketchy, the OCR has a hard time finding an exact match. Keep trying
 		// different X coordinates until we find something that we can identify
-		for(let findX = 40; findX < 100; findX++){
-			let attempt = OCR.readLine(buffer, this.fonts.heavy, this.colors.orange, findX, 37, true, true).text;
-			
-			if(attempt){
+		for(let c = 0; c < colors.length; c++){
+			let color = this.colors[colors[c]];
+
+			for(let findX = 40; findX < 100; findX++){
+				let attempt = OCR.readLine(buffer, this.fonts.heavy, color, findX, 37, true, true).text;
+
+				if(!attempt){continue;}
+
 				attempts.push(attempt);
 
+				// Exact hit against a known misreading, cheapest possible answer
 				let key = Object.keys(types).indexOf(attempt);
-				
+
 				if(key != -1){
 					let values = Object.values(types);
 					return {name: values[key], found: true};
@@ -226,13 +298,116 @@ export default class CrewReader
 					cleanAttempts.push(attempt);
 				}
 			}
-		}	
+		}
+
+		// Nothing matched exactly, so fall back to the closest real crew name.
+		// The OCR garbles this font badly ("EASTErN MUSK; TEEr"), but the damage
+		// is consistent enough that the right name is still much the nearest.
+		let fuzzy = this.matchCrewName(cleanAttempts);
+
+		if(fuzzy){
+			return {name: fuzzy, found: true};
+		}
 
 		return {
 			name: '',
 			found: false,
 			attempts: cleanAttempts,
 		};
+	}
+
+	/**
+	 * Pick the crew name closest to any of the OCR's attempts
+	 * @param  {array} attempts
+	 * @return {string|null}
+	 */
+	matchCrewName(attempts){
+		let best = null, bestScore = 0, runnerUp = 0;
+
+		for(let i = 0; i < attempts.length; i++){
+			let attempt = CrewReader.normalise(attempts[i]);
+
+			// Too short to tell "Merchant" from "Jade Merchant"
+			if(attempt.length < 5){continue;}
+
+			for(let n = 0; n < this.crewNames.length; n++){
+				let name = this.crewNames[n];
+				let score = CrewReader.similarity(attempt, CrewReader.normalise(name));
+
+				if(score > bestScore){
+					runnerUp = bestScore;
+					bestScore = score;
+					best = name;
+				} else if(score > runnerUp && name !== best){
+					runnerUp = score;
+				}
+			}
+		}
+
+		// Demand both a good match and a clear winner. Several crew share a long
+		// prefix ("Eastern Bannerman" / "Eastern Guide" / "Eastern Overseer"), and
+		// guessing between them is worse than admitting we could not read it.
+		if(bestScore >= 0.62 && (bestScore - runnerUp) >= 0.06){
+			return best;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Strip everything the OCR is unreliable about: case, spacing, punctuation
+	 * @param  {string} value
+	 * @return {string}
+	 */
+	static normalise(value){
+		return String(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
+	}
+
+	/**
+	 * Score two normalised strings from 0 to 1
+	 * @param  {string} a
+	 * @param  {string} b
+	 * @return {number}
+	 */
+	static similarity(a, b){
+		if(!a.length || !b.length){return 0;}
+		if(a === b){return 1;}
+
+		// The OCR frequently truncates the name, so a clean prefix is strong
+		// evidence, scaled by how much of the name we actually got
+		if(b.indexOf(a) === 0){
+			return 0.75 + 0.25 * (a.length / b.length);
+		}
+
+		let distance = CrewReader.levenshtein(a, b);
+
+		return 1 - (distance / Math.max(a.length, b.length));
+	}
+
+	/**
+	 * Edit distance between two strings
+	 * @param  {string} a
+	 * @param  {string} b
+	 * @return {int}
+	 */
+	static levenshtein(a, b){
+		let previous = [];
+
+		for(let j = 0; j <= b.length; j++){previous[j] = j;}
+
+		for(let i = 1; i <= a.length; i++){
+			let current = [i];
+
+			for(let j = 1; j <= b.length; j++){
+				let cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+
+				current[j] = Math.min(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + cost);
+			}
+
+			previous = current;
+		}
+
+		return previous[b.length];
 	}
 }
 

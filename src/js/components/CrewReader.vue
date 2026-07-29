@@ -82,8 +82,11 @@
 					let offsetX = mousePosition.x - result.foundX;
 					let offsetY = mousePosition.y - result.foundY;
 
-					let tileX = Math.ceil(offsetX / 53);
-					let tileY = Math.ceil(offsetY / 53);
+					// Tile size comes from whichever interface skin was matched
+					let tile = result.tile || 53;
+
+					let tileX = Math.ceil(offsetX / tile);
+					let tileY = Math.ceil(offsetY / tile);
 
 					if(tileX == 1){
 						this.captains.forEach(captain => {
