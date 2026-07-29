@@ -44,10 +44,10 @@
 
 					console.log('CrewReaderResult', result);
 
-
-					if(!result.type.found){
-						this.showMissingTypeModal(result.type);
-					}
+					// An unreadable type is only worth reporting for crew. Captains
+					// have personal names ("Walter Teach") which can never match a
+					// crew type, so the warning is checked further down, once we
+					// know which of the two we are looking at.
 
 					// If there's a selected crew member, edit their stats instead
 					if(this.$root.selected){
@@ -60,12 +60,16 @@
 							crew = this.$root.crew.find(member => member.id == selected.id);
 						}
 
-						if(result.type.found && !('name' in selected)){
-							this.types.forEach(type => {
-								if(type.name == result.type.name){
-									crew.type = type;
-								}
-							});
+						if(!('name' in selected)){
+							if(result.type.found){
+								this.types.forEach(type => {
+									if(type.name == result.type.name){
+										crew.type = type;
+									}
+								});
+							} else {
+								this.showMissingTypeModal(result.type);
+							}
 						}
 
 						crew.morale = result.morale;
@@ -105,7 +109,12 @@
 						});
 
 						return;
-					} 
+					}
+
+					// A crew tile, so an unreadable type is worth reporting
+					if(!result.type.found){
+						this.showMissingTypeModal(result.type);
+					}
 
 					let conversions = {
 						6:  {x: 2, y: 1},
