@@ -64,6 +64,9 @@ const app = new Vue({
     			success_chance: 0,
     			captain: null,
     			crew: [],
+    			solidarity: 0,
+    			solidarity_bearer: null,
+    			solidarity_value: 0,
     			parts: {
     				ram: null,
     				deckItem1: null,

@@ -8,7 +8,11 @@
 		<div class="flex items-center justify-between mt-2">
 			<p class="text-3xl">{{ $root.result.success_chance }}%</p>
 			<img :src="member.type.image" alt="" v-for="member in $root.result.crew">
-		</div>			
+		</div>
+
+		<p class="text-sm mt-1" v-if="$root.result.solidarity">
+			Solidarity +{{ $root.result.solidarity }} &mdash; put the {{ $root.result.solidarity_bearer }} in the first crew slot
+		</p>
 
 		<div class="mt-2 flex justify-between items-end">
 			<div class="w-1/2">
@@ -93,6 +97,9 @@
 	    			success_chance: 0,
 	    			captain: null,
 	    			crew: [],
+	    			solidarity: 0,
+	    			solidarity_bearer: null,
+	    			solidarity_value: 0,
 	    			parts: {
 	    				ram: null,
 	    				deckItem1: null,

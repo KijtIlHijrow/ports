@@ -162,6 +162,9 @@
 							success_chance: result.success_chance,
 							captain: result.combination[0],
 							crew: result.combination[1],
+							solidarity: result.solidarity,
+							solidarity_bearer: result.solidarity_bearer,
+							solidarity_value: result.solidarity_value,
 							parts: {
 								ram: result.combination[2][0],
 								deckItem1: result.combination[2][1],

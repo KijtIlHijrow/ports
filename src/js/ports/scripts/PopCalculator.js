@@ -1,3 +1,5 @@
+import solidarityValues from '../data/solidarity.json';
+
 export default class PopCalculator
 {
 	constructor(captains, crew, rams, deckItems, hulls, shipwright)
@@ -12,11 +14,58 @@ export default class PopCalculator
 		// Generate the crew combinations
 		this.crewCombinations = Combinatorics.combination(this.crew, 5).toArray();
 
+		this.applySolidarity(this.crewCombinations);
+
 		// Generate the ship combinations
 		this.shipCombinations = Combinatorics.cartesianProduct(this.rams, this.deckItems, this.deckItems, this.hulls).toArray();
 
 		// Finally, generate all the possible combinations with 1 captain, 1 crew combination and 1 ship combination
 		this.combinations = Combinatorics.cartesianProduct(this.captains, this.crewCombinations, this.shipCombinations);
+	}
+
+	/**
+	 * Work out the Solidarity bonus for every crew combination up front.
+	 *
+	 * Solidarity adds X to all three stats for each unique unit type aboard,
+	 * counting the captain, so the most a +25 bearer can give is 6 x 25. It does
+	 * not stack: with two bearers aboard only one applies, so we take the
+	 * strongest and assume it is placed leftmost (the game resolves traits left
+	 * to right, and a weaker bearer to the left would suppress a stronger one).
+	 *
+	 * The bonus depends only on the crew, not the captain or the ship parts, so
+	 * caching it here keeps it out of the main loop.
+	 *
+	 * @param  {array} crewCombinations
+	 * @return {void}
+	 */
+	applySolidarity(crewCombinations)
+	{
+		for(let i = 0; i < crewCombinations.length; i++){
+			let combination = crewCombinations[i];
+			let types = [];
+			let strongest = 0;
+			let bearer = null;
+
+			for(let c = 0; c < combination.length; c++){
+				let name = combination[c].type.name;
+
+				if(types.indexOf(name) == -1){
+					types.push(name);
+				}
+
+				let solidarity = solidarityValues[name] || 0;
+
+				if(solidarity > strongest){
+					strongest = solidarity;
+					bearer = name;
+				}
+			}
+
+			// + 1 for the captain, who counts towards the unique types
+			combination.solidarity = strongest * (types.length + 1);
+			combination.solidarityBearer = bearer;
+			combination.solidarityValue = strongest;
+		}
 	}
 
 	calculate(moraleTarget, combatTarget, seafaringTarget)
@@ -73,7 +122,12 @@ export default class PopCalculator
 	           	seafaring += combination[2][0]['seafaring'];
 	           	seafaring += combination[2][1]['seafaring'];
 	           	seafaring += combination[2][2]['seafaring'];
-	           	seafaring += combination[2][3]['seafaring'];	
+	           	seafaring += combination[2][3]['seafaring'];
+
+	           	// Solidarity, cached per crew combination by applySolidarity()
+	           	morale += combination[1].solidarity;
+	           	combat += combination[1].solidarity;
+	           	seafaring += combination[1].solidarity;
 
 	           	// Calculate the success chance
 	           	if(moraleTarget > 0){moraleSuccessChance = morale / moraleTarget * 100};
@@ -111,6 +165,9 @@ export default class PopCalculator
 			resolve({
 				'success_chance' : Math.min(Math.floor(best.success_chance), 100),
 				'combination': best.combination,
+				'solidarity': best.combination ? best.combination[1].solidarity : 0,
+				'solidarity_bearer': best.combination ? best.combination[1].solidarityBearer : null,
+				'solidarity_value': best.combination ? best.combination[1].solidarityValue : 0,
 				'execution_time': time2 - time1,
 			});
        });		
