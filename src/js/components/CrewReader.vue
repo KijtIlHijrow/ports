@@ -164,9 +164,12 @@
 									} else {
 										// Note which slot needs naming, so that picking
 										// its type teaches the reader this garbling
+										// Only remember attempts specific enough to
+										// identify this crew and no other
 										this.$root.unidentified = {
 											id: crew.id,
-											attempts: result.type.attempts || [],
+											attempts: (result.type.attempts || [])
+												.filter(a => this.reader.constructor.teachable(a)),
 										};
 
 										this.showMissingTypeModal(result.type);

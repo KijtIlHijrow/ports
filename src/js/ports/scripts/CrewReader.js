@@ -355,14 +355,12 @@ export default class CrewReader
 
 		let cleanAttempts = [];
 
-		// Cleanup the attempts
-		if(attempts.length){
-			for(let i = 0; i < attempts.length; i++){
-				let attempt = attempts[i];
-
-				if(attempt != ';' && attempt != ':' && attempt.length >= 5){
-					cleanAttempts.push(attempt);
-				}
+		// Keep the attempts carrying enough letters to be worth comparing. Raw
+		// length is misleading: "$MUG" is four characters of signal, while
+		// "; G ; ; r" is nine characters of noise.
+		for(let i = 0; i < attempts.length; i++){
+			if(CrewReader.normalise(attempts[i]).length >= 3){
+				cleanAttempts.push(attempts[i]);
 			}
 		}
 
@@ -371,8 +369,13 @@ export default class CrewReader
 		let learned = this.learned();
 
 		for(let i = 0; i < cleanAttempts.length; i++){
-			if(learned[cleanAttempts[i]]){
-				return {name: learned[cleanAttempts[i]], found: true, learned: true};
+			let name = learned[cleanAttempts[i]];
+
+			// Still hold it to the stats. A saved mapping is evidence, not proof:
+			// it may have been learned from a read that was not as specific as it
+			// looked, and a wrong type is worse than no type.
+			if(name && this.fitsStats(name, stats)){
+				return {name: name, found: true, learned: true};
 			}
 		}
 
@@ -403,11 +406,73 @@ export default class CrewReader
 	 * @return {object}
 	 */
 	learned(){
+		let stored = {};
+
 		try {
-			return JSON.parse(localStorage.getItem('learnedTypes')) || {};
+			stored = JSON.parse(localStorage.getItem('learnedTypes')) || {};
 		} catch(e) {
 			return {};
 		}
+
+		// Drop keys that should never have been learned. Earlier versions stored
+		// every attempt, including junk like "; G ; ; r" that a failed read
+		// produces for any crew whatsoever, so one correction could then answer
+		// for unrelated crew members. Pruning here repairs those saved maps.
+		let clean = {};
+
+		Object.keys(stored).forEach(key => {
+			if(CrewReader.teachable(key)){
+				clean[key] = stored[key];
+			}
+		});
+
+		return clean;
+	}
+
+	/**
+	 * Is this OCR attempt specific enough to be worth remembering?
+	 *
+	 * A failed read emits punctuation soup that says nothing about which crew
+	 * member produced it, so only attempts carrying real letters can be tied to
+	 * a type.
+	 *
+	 * @param  {string} attempt
+	 * @return {boolean}
+	 */
+	static teachable(attempt){
+		return CrewReader.normalise(attempt).length >= 4;
+	}
+
+	/**
+	 * Could a crew type of this name really show these stats?
+	 *
+	 * Stats only grow from their base, so a base above what was read rules the
+	 * type out. This is the backstop on every route to an answer, including ones
+	 * the player confirmed, because a saved mapping can be wrong or stale.
+	 *
+	 * @param  {string} name
+	 * @param  {object} stats
+	 * @return {boolean}
+	 */
+	fitsStats(name, stats){
+		let base = this.baseStats[name];
+
+		// Nothing to check against, so nothing to contradict
+		if(!base || !stats){return true;}
+
+		let read = {
+			morale: CrewReader.toNumber(stats.morale),
+			combat: CrewReader.toNumber(stats.combat),
+			seafaring: CrewReader.toNumber(stats.seafaring),
+			speed: CrewReader.toNumber(stats.speed),
+		};
+
+		// If no stat read at all, the stats cannot judge anything
+		if(!read.morale && !read.combat && !read.seafaring && !read.speed){return true;}
+
+		return ['morale', 'combat', 'seafaring', 'speed'].every(key => {
+			return read[key] >= Math.floor(base[key] * 0.9);
+		});
 	}
 
 	/**
@@ -450,9 +515,15 @@ export default class CrewReader
 		// cannot separate them however well it was read.
 		let candidates = names.filter(name => (bestScore - scores[name]) < 0.06);
 
-		if(candidates.length === 1){return candidates[0];}
+		// Drop any the stats rule out, including a lone front-runner. A name can
+		// score well and still be impossible, and letting a single candidate
+		// through unchecked is how a Travelling Drunk came back as a Smuggler.
+		let possible = candidates.filter(name => this.fitsStats(name, stats));
 
-		return this.byStats(candidates, stats);
+		if(!possible.length){return null;}
+		if(possible.length === 1){return possible[0];}
+
+		return this.byStats(possible, stats);
 	}
 
 	/**
@@ -470,23 +541,15 @@ export default class CrewReader
 	byStats(candidates, stats){
 		if(!stats){return null;}
 
-		let read = {
-			morale: CrewReader.toNumber(stats.morale),
-			combat: CrewReader.toNumber(stats.combat),
-			seafaring: CrewReader.toNumber(stats.seafaring),
-			speed: CrewReader.toNumber(stats.speed),
-		};
+		// Nothing was read, so there is nothing to choose on. fitsStats declines
+		// to veto in this case, which is right, but choosing is a stronger claim
+		// than not vetoing and it needs actual evidence.
+		if(!CrewReader.toNumber(stats.morale) && !CrewReader.toNumber(stats.combat)
+			&& !CrewReader.toNumber(stats.seafaring) && !CrewReader.toNumber(stats.speed)){
+			return null;
+		}
 
-		// A little slack, because a stat read as 0 may just be unreadable
-		let fits = candidates.filter(name => {
-			let base = this.baseStats[name];
-
-			if(!base){return false;}
-
-			return ['morale', 'combat', 'seafaring', 'speed'].every(key => {
-				return read[key] >= Math.floor(base[key] * 0.9);
-			});
-		});
+		let fits = candidates.filter(name => this.baseStats[name] && this.fitsStats(name, stats));
 
 		if(fits.length === 1){return fits[0];}
 		if(!fits.length){return null;}
