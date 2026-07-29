@@ -1,6 +1,6 @@
 {
-	"appName": "POP Voyage Calculator",
-	"description": "This app will calculate ports voyages for you.",
+	"appName": "POP Voyage Calculator+",
+	"description": "Calculates ports voyages, accounting for the Solidarity trait.",
 	"appUrl": "index.html",
 	"configUrl": "appconfig.json",
 	"iconUrl": "",
