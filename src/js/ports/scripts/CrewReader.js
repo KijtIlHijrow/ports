@@ -1,5 +1,6 @@
 import { closeCrewModern } from '../data/skins';
 import crewRegions from '../data/crew.json';
+import crewSpeeds from '../data/speeds.json';
 import DigitReader from './DigitReader';
 
 export default class CrewReader
@@ -84,6 +85,22 @@ export default class CrewReader
 		this.crewNames = ['Empty'].concat(
 			crewRegions.reduce((all, region) => all.concat(region.sailors.map(s => s[1])), [])
 		);
+
+		// Base stats per crew type, for telling apart names the OCR cannot.
+		// "Travelling Drunk" and "Travelling Band" share every readable letter,
+		// but one starts at 70 morale and the other at 1200.
+		this.baseStats = {};
+
+		crewRegions.forEach(region => {
+			region.sailors.forEach(sailor => {
+				this.baseStats[sailor[1]] = {
+					morale: CrewReader.toNumber(sailor[2]),
+					combat: CrewReader.toNumber(sailor[3]),
+					seafaring: CrewReader.toNumber(sailor[4]),
+					speed: CrewReader.toNumber(crewSpeeds[sailor[1]]),
+				};
+			});
+		});
 	}
 
 	read(){
@@ -130,6 +147,19 @@ export default class CrewReader
 			? this.digitReader.read(buffer, coordinates.level.x, coordinates.level.y, true)
 			: (this.getStat(buffer, coordinates.level.x, coordinates.level.y) || '').split(' ')[1];
 
+		let stat = (name) => skin.digits
+			? this.digitReader.read(buffer, coordinates[name].x, coordinates[name].y, false)
+			: this.getStat(buffer, coordinates[name].x, coordinates[name].y);
+
+		// Read the stats first: they are what separates crew whose names the OCR
+		// cannot tell apart, so getType needs them
+		let stats = {
+			morale: stat('morale') || 0,
+			combat: stat('combat') || 0,
+			seafaring: stat('seafaring') || 0,
+			speed: stat('speed') || 0,
+		};
+
 		let captain = this.isCaptain(detailsImage);
 		let type = {};
 
@@ -137,19 +167,15 @@ export default class CrewReader
 			type.name = 'captain';
 			type.found = true;
 		} else {
-			type = this.getType(buffer, skin);
+			type = this.getType(buffer, skin, stats);
 		}
-
-		let stat = (name) => skin.digits
-			? this.digitReader.read(buffer, coordinates[name].x, coordinates[name].y, false)
-			: this.getStat(buffer, coordinates[name].x, coordinates[name].y);
 
 		this.result = {
 			type: type,
-			morale: stat('morale') || 0,
-			combat: stat('combat') || 0,
-			seafaring: stat('seafaring') || 0,
-			speed: stat('speed') || 0,
+			morale: stats.morale,
+			combat: stats.combat,
+			seafaring: stats.seafaring,
+			speed: stats.speed,
 			level: level || 0,
 			skin: skin.name,
 			tile: skin.grid.tile,
@@ -214,9 +240,10 @@ export default class CrewReader
 	 * Find the type of crew member
 	 * @param  {ImageData} buffer
 	 * @param  {object} skin
+	 * @param  {object} stats  as read, for separating look-alike names
 	 * @return {string}
 	 */
-	getType(buffer, skin){
+	getType(buffer, skin, stats){
 		let types = {
 			' EMpTY SLOT' : 'Empty',
 			//The Arc
@@ -352,7 +379,7 @@ export default class CrewReader
 		// Nothing matched exactly, so fall back to the closest real crew name.
 		// The OCR garbles this font badly ("EASTErN MUSK; TEEr"), but the damage
 		// is consistent enough that the right name is still much the nearest.
-		let fuzzy = this.matchCrewName(cleanAttempts);
+		let fuzzy = this.matchCrewName(cleanAttempts, stats);
 
 		if(fuzzy){
 			return {name: fuzzy, found: true};
@@ -388,8 +415,8 @@ export default class CrewReader
 	 * @param  {array} attempts
 	 * @return {string|null}
 	 */
-	matchCrewName(attempts){
-		let best = null, bestScore = 0, runnerUp = 0;
+	matchCrewName(attempts, stats){
+		let scores = {};
 
 		for(let i = 0; i < attempts.length; i++){
 			let attempt = CrewReader.normalise(attempts[i]);
@@ -397,32 +424,97 @@ export default class CrewReader
 			// This font truncates badly — "Smuggler" can come back as just
 			// "$MUG" — so short reads have to be usable. Three characters is
 			// enough because 35 of the 44 three-letter prefixes are unique to
-			// one crew, and the margin check below throws out the rest rather
-			// than picking between them.
+			// one crew, and anything ambiguous is resolved on stats below.
 			if(attempt.length < 3){continue;}
 
 			for(let n = 0; n < this.crewNames.length; n++){
 				let name = this.crewNames[n];
 				let score = CrewReader.similarity(attempt, CrewReader.normalise(name));
 
-				if(score > bestScore){
-					runnerUp = bestScore;
-					bestScore = score;
-					best = name;
-				} else if(score > runnerUp && name !== best){
-					runnerUp = score;
+				if(!(name in scores) || score > scores[name]){
+					scores[name] = score;
 				}
 			}
 		}
 
-		// Demand both a good match and a clear winner. Several crew share a long
-		// prefix ("Eastern Bannerman" / "Eastern Guide" / "Eastern Overseer"), and
-		// guessing between them is worse than admitting we could not read it.
-		if(bestScore >= 0.62 && (bestScore - runnerUp) >= 0.06){
-			return best;
-		}
+		let names = Object.keys(scores);
 
-		return null;
+		if(!names.length){return null;}
+
+		let bestScore = names.reduce((best, name) => Math.max(best, scores[name]), 0);
+
+		if(bestScore < 0.62){return null;}
+
+		// Everything close to the top is a genuine candidate. Several crew share
+		// a whole word ("Travelling Drunk" / "Travelling Band"), so the name
+		// cannot separate them however well it was read.
+		let candidates = names.filter(name => (bestScore - scores[name]) < 0.06);
+
+		if(candidates.length === 1){return candidates[0];}
+
+		return this.byStats(candidates, stats);
+	}
+
+	/**
+	 * Choose between crew whose names read alike, using the stats on screen
+	 *
+	 * Stats only ever grow from their base through levels and personal bonuses,
+	 * so a candidate whose base already exceeds what was read cannot be right.
+	 * That alone separates most look-alikes: a Travelling Band starts at 1200
+	 * morale, so it cannot be the unit reading 131.
+	 *
+	 * @param  {array} candidates
+	 * @param  {object} stats  morale/combat/seafaring/speed as read
+	 * @return {string|null}
+	 */
+	byStats(candidates, stats){
+		if(!stats){return null;}
+
+		let read = {
+			morale: CrewReader.toNumber(stats.morale),
+			combat: CrewReader.toNumber(stats.combat),
+			seafaring: CrewReader.toNumber(stats.seafaring),
+			speed: CrewReader.toNumber(stats.speed),
+		};
+
+		// A little slack, because a stat read as 0 may just be unreadable
+		let fits = candidates.filter(name => {
+			let base = this.baseStats[name];
+
+			if(!base){return false;}
+
+			return ['morale', 'combat', 'seafaring', 'speed'].every(key => {
+				return read[key] >= Math.floor(base[key] * 0.9);
+			});
+		});
+
+		if(fits.length === 1){return fits[0];}
+		if(!fits.length){return null;}
+
+		// Still several. The truthful one is the strongest base that still fits,
+		// since anything weaker would need implausibly large personal bonuses.
+		let total = (name) => {
+			let base = this.baseStats[name];
+			return base.morale + base.combat + base.seafaring + base.speed;
+		};
+
+		let sorted = fits.slice().sort((a, b) => total(b) - total(a));
+
+		// Only commit if there is a single strongest, never on a coin flip
+		return total(sorted[0]) > total(sorted[1]) ? sorted[0] : null;
+	}
+
+	/**
+	 * Parse a stat that may be a string with thousands separators
+	 * @param  {string|number} value
+	 * @return {int}
+	 */
+	static toNumber(value){
+		if(value === null || value === undefined){return 0;}
+
+		let parsed = parseInt(String(value).replace(/,/g, ''), 10);
+
+		return isNaN(parsed) ? 0 : parsed;
 	}
 
 	/**
