@@ -24,36 +24,14 @@
 
 				showModal: false,
 				attempts: '',
-
-				// Roster scan: clicking through every crew member in one pass
-				scanning: false,
-				timer: null,
-
-				// The read waiting to be believed, and how many polls have
-				// agreed with it so far
-				pending: null,
-				stable: 0,
-
-				// The tile read just before this one, which has now lost its
-				// selection highlight
-				previous: null,
-
-				// Tiles this pass has recorded
-				taught: {},
 			}
 		},
 
 		mounted(){
 			window.events.$on('alt-1', this.read);
-			window.events.$on('roster-scan-start', this.startScanning);
-			window.events.$on('roster-scan-stop', this.stopScanning);
 
 			this.reader = crewReader();
 			this.scanner = rosterScanner();
-		},
-
-		beforeDestroy(){
-			this.stopScanning();
 		},
 
 		computed: {
@@ -124,7 +102,7 @@
 				this.applyToSlot(RosterScanner.slotAt(tile.column, tile.row), result);
 
 				if(result.type.found){
-					this.learnPortrait(result, tile, result.type.name);
+					this.correctPortrait(result, tile, result.type.name);
 				}
 			},
 
@@ -217,136 +195,25 @@
 			},
 
 			/**
-			 * Record what this crew type looks like in the roster grid
+			 * Note what this crew type looks like on this client
 			 *
-			 * The read already knows both halves of the answer — the type, from
-			 * the details panel, and the tile, from the mouse — so the portrait
-			 * costs nothing beyond one capture.
+			 * The scanner already knows all 58 portraits from the bundled art,
+			 * so this is only an escape hatch: if the client draws something the
+			 * files do not predict, a read of it says so, and the read costs
+			 * nothing because both halves are already to hand — the type from
+			 * the details panel, the tile from the mouse.
 			 *
 			 * @param  {object} result
 			 * @param  {object} tile
 			 * @param  {string} name
 			 * @return {void}
 			 */
-			learnPortrait(result, tile, name){
+			correctPortrait(result, tile, name){
 				let buffer = this.scanner.captureAt(result.foundX, result.foundY, result.tile);
 
 				if(!buffer){return;}
 
 				this.scanner.remember(name, this.scanner.signature(buffer, tile.column, tile.row, result.tile));
-
-				// During a scan the tile read a moment ago has just lost its
-				// selection, so it is now the same crew member drawn plainly.
-				// Both appearances are needed, because a scan sees one selected
-				// tile and twenty four plain ones, and this is the only moment
-				// a plain one can be named with any certainty.
-				//
-				// Only during a scan: between two ordinary reads the roster may
-				// have been reordered, and that tile could belong to anyone.
-				if(this.scanning && this.previous
-					&& (this.previous.column !== tile.column || this.previous.row !== tile.row)){
-					this.scanner.remember(
-						this.previous.name,
-						this.scanner.signature(buffer, this.previous.column, this.previous.row, result.tile)
-					);
-				}
-
-				this.previous = {column: tile.column, row: tile.row, name: name};
-			},
-
-			/**
-			 * Start a pass over the whole roster
-			 *
-			 * Clicking a crew member is the only way to bring up their details,
-			 * so the roster has to be walked by hand once. Watching for it means
-			 * the walk is only clicking, with no key to press per crew member,
-			 * and it fills in every stat as well as every portrait.
-			 *
-			 * @return {void}
-			 */
-			startScanning(){
-				if(this.scanning){return;}
-
-				this.scanning = true;
-				this.pending = null;
-				this.stable = 0;
-				this.previous = null;
-				this.taught = {};
-
-				this.timer = setInterval(this.poll, 150);
-				this.progress('Click each crew member in turn');
-			},
-
-			stopScanning(){
-				this.scanning = false;
-
-				if(this.timer){
-					clearInterval(this.timer);
-					this.timer = null;
-				}
-
-				this.progress('');
-			},
-
-			/**
-			 * Look at whoever the details panel is showing, once per tick
-			 * @return {void}
-			 */
-			poll(){
-				if(!this.reader.read()){
-					return this.progress('Waiting for the crew roster');
-				}
-
-				let result = this.reader.result;
-				let tile = this.tileUnderMouse(result);
-
-				if(!tile || tile.column < 2){
-					return this.progress('Keep the mouse on the crew member you clicked');
-				}
-
-				if(!result.type.found || !result.type.name){
-					return this.progress('That one was not recognised — set its type by hand');
-				}
-
-				// The details panel lags the click by a frame or two, so the
-				// same answer has to come back several times running before it
-				// can be tied to the tile the mouse is on. Attributing a stale
-				// panel to a new tile would teach the wrong portrait.
-				let key = [
-					tile.column, tile.row, result.type.name,
-					result.morale, result.combat, result.seafaring, result.level,
-				].join(':');
-
-				if(key !== this.pending){
-					this.pending = key;
-					this.stable = 1;
-					return;
-				}
-
-				this.stable++;
-
-				// Act once, on the poll that settles it
-				if(this.stable !== 3){return;}
-
-				this.applyToSlot(RosterScanner.slotAt(tile.column, tile.row), result);
-				this.learnPortrait(result, tile, result.type.name);
-
-				this.taught[`${tile.column}:${tile.row}`] = true;
-				this.progress('');
-			},
-
-			/**
-			 * Tell the rest of the app how the pass is going
-			 * @param  {string} message
-			 * @return {void}
-			 */
-			progress(message){
-				window.events.$emit('roster-scan', {
-					scanning: this.scanning,
-					tiles: Object.keys(this.taught).length,
-					types: this.scanner.learned(),
-					message: message || '',
-				});
 			},
 
 			/**

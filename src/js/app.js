@@ -42,17 +42,20 @@ import Crew from './ports/models/Crew';
 import Part from './ports/models/Part';
 
 /**
- * Where a crew type's portrait is served from. Most of them are hotlinked from
- * the wiki, but it has since deleted eight of the portraits this calculator
- * asks for, and a deleted one draws as an empty box. Those eight are kept in
- * the repository instead, written as 'crew/<name>.png' in crew.json.
+ * Where a crew type's portrait is served from.
+ *
+ * All 58 now live in the repository. They used to be hotlinked from the wiki,
+ * which had already deleted eight of them — a deleted one draws as an empty
+ * box — and which cannot be read back off a canvas anyway. The roster scanner
+ * needs to read their pixels to recognise a crew member on screen, and a
+ * cross-origin image taints the canvas, so hosting them here is what makes
+ * that possible as well as what stops them rotting.
+ *
  * @param  {string} path
  * @return {string}
  */
 function portrait(path){
-	return path.indexOf('/images/') === 0
-		? 'https://runescape.wiki' + path
-		: '/ports/public/images/' + path;
+	return '/ports/public/images/' + path;
 }
 
 const app = new Vue({

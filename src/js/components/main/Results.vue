@@ -15,8 +15,10 @@
 		</p>
 
 		<div class="flex items-center mt-2">
-			<button class="text-white border border-white p-1" @click.prevent="findOnScreen">Find on screen</button>
-			<span class="ml-3 text-sm opacity-75">{{ finding }}</span>
+			<button class="text-white border border-white p-1" @click.prevent="toggleFind">
+				{{ finding ? 'Stop pointing' : 'Find on screen' }}
+			</button>
+			<span class="ml-3 text-sm opacity-75">{{ message }}</span>
 		</div>
 
 		<div class="mt-2 flex justify-between items-end">
@@ -42,13 +44,19 @@
 </template>
 
 <script>
+	import RosterScanner from '../../ports/scripts/RosterScanner.js';
 	import { rosterScanner } from '../../ports/scripts/readers.js';
 
 	export default {
 		data(){
 			return {
 				show: false,
-				finding: '',
+
+				// Pointing runs until it is stopped, because clicking a crew
+				// member rearranges the roster underneath it
+				finding: false,
+				timer: null,
+				message: '',
 			}
 		},
 
@@ -56,46 +64,104 @@
 			window.events.$on('result-calculated', data => {
 				this.$root.selected = null;
 				this.show = true;
-				this.finding = '';
+				this.stopFinding();
 			});
 		},
 
+		beforeDestroy(){
+			this.stopFinding();
+		},
+
 		methods: {
+			toggleFind(){
+				return this.finding ? this.stopFinding() : this.startFinding();
+			},
+
 			/**
-			 * Box the picked crew where they are sitting in the game's roster
+			 * Keep boxes on the crew this voyage still needs
 			 *
-			 * The calculator picks crew by slot number, and RuneScape reorders
-			 * the roster, so a slot number is no help in finding anyone. Their
-			 * portraits are, and the scan knows those.
+			 * One pass would not survive the first click. Clicking an unassigned
+			 * crew member in this interface puts them on the ship, which floats
+			 * them into the top row and shuffles everyone behind them along, so
+			 * where the remaining picks are sitting changes every time you take
+			 * one. Re-reading a few times a second means the boxes describe the
+			 * roster as it is rather than as it was.
 			 *
 			 * @return {void}
 			 */
-			findOnScreen(){
+			startFinding(){
+				if(this.finding){return;}
+
+				this.finding = true;
+				this.message = 'Reading the portraits…';
+
+				rosterScanner().prepare().then(() => {
+					if(!this.finding){return;}
+
+					this.point();
+					this.timer = setInterval(this.point, 400);
+				});
+			},
+
+			stopFinding(){
+				this.finding = false;
+				this.message = '';
+
+				if(this.timer){
+					clearInterval(this.timer);
+					this.timer = null;
+				}
+			},
+
+			/**
+			 * One pass: read the roster, box whatever is still to be clicked
+			 * @return {void}
+			 */
+			point(){
 				let picks = this.$root.result.crew
-					.filter(member => member.type && member.type.name)
+					.filter(member => member.type && member.type.name && member.type.name !== 'Empty')
 					.map(member => member.type.name);
 
 				if(!picks.length){
-					return this.finding = 'Nothing to find';
+					this.message = 'Nothing to find';
+					return this.stopFinding();
 				}
 
-				let found = rosterScanner().find(picks);
+				let scanner = rosterScanner();
+				let scan = scanner.scan(this.candidates());
 
-				console.log('RosterScan', found);
-
-				if(!found.found){
-					return this.finding = 'Open the crew roster first';
+				if(!scan){
+					return this.message = 'Open the ship\'s crew interface';
 				}
 
-				if(!found.marks.length){
-					return this.finding = found.unknown == 25
-						? 'No portraits learned yet — run a roster scan'
-						: 'None of the picked crew were recognised';
+				let found = scanner.find(scan, picks, RosterScanner.aboard(scan));
+
+				if(!found.marks.length && !found.missing.length){
+					this.message = 'All aboard — nothing left to click';
+					return this.stopFinding();
 				}
 
-				rosterScanner().show(found.marks);
+				scanner.show(found.marks);
 
-				this.finding = this.summarise(found);
+				this.message = this.summarise(found);
+			},
+
+			/**
+			 * The crew types the roster could possibly be holding
+			 *
+			 * Asking which of the fifteen types you own a tile is beats asking
+			 * which of all fifty-eight, because several of the fifty-eight are
+			 * near enough identical to each other.
+			 *
+			 * @return {array}
+			 */
+			candidates(){
+				let names = this.$root.crew
+					.concat(this.$root.result.crew || [])
+					.filter(member => member.type && member.type.name)
+					.map(member => member.type.name);
+
+				return names.filter((name, i) => names.indexOf(name) === i);
 			},
 
 			/**
@@ -106,20 +172,25 @@
 			summarise(found){
 				let notes = [];
 				let unsure = found.marks.filter(mark => !mark.certain).length;
+				let sure = found.marks.length - unsure;
+
+				if(sure){
+					notes.push(`${sure} green to click`);
+				}
 
 				if(unsure){
-					notes.push(`${unsure} amber: more of that type than the voyage needs`);
+					notes.push(`${unsure} amber (more of that type than needed)`);
 				}
 
 				if(found.missing.length){
-					notes.push(`not found: ${found.missing.join(', ')}`);
+					notes.push(`not in the roster: ${found.missing.join(', ')}`);
 				}
 
 				if(found.unknown){
-					notes.push(`${found.unknown} ${found.unknown == 1 ? 'tile' : 'tiles'} unrecognised`);
+					notes.push(`${found.unknown} unrecognised`);
 				}
 
-				return notes.length ? notes.join('; ') : 'All picked crew boxed in green';
+				return notes.join('; ');
 			},
 
 			/**
