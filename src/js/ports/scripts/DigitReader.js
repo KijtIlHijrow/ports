@@ -27,24 +27,42 @@ export default class DigitReader
 		// values, and the adversity percentages are drawn over a green bar.
 		this.threshold = 105;
 		this.saturation = 45;
+
+		// Except in the Compare block, which colours a value against the crew
+		// member you have selected — green for better, red for worse. Those two
+		// hues have to be allowed there, and only there.
+		this.colour = 120;
+		this.dim = 90;
 	}
 
 	/**
-	 * Is this pixel part of the white text?
+	 * Is this pixel part of the text?
 	 * @param  {ImageData} buffer
 	 * @param  {int} x
 	 * @param  {int} y
+	 * @param  {boolean} comparison  reading a Compare block, where a value may
+	 *                               be drawn in red or green rather than white
 	 * @return {boolean}
 	 */
-	lit(buffer, x, y){
+	lit(buffer, x, y, comparison){
 		if(x < 0 || y < 0 || x >= buffer.width || y >= buffer.height){return false;}
 
 		let i = (y * buffer.width + x) * 4;
 		let r = buffer.data[i], g = buffer.data[i + 1], b = buffer.data[i + 2];
 
-		if(Math.max(r, g, b) - Math.min(r, g, b) > this.saturation){return false;}
+		if(Math.max(r, g, b) - Math.min(r, g, b) <= this.saturation){
+			return (r * 0.299 + g * 0.587 + b * 0.114) > this.threshold;
+		}
 
-		return (r * 0.299 + g * 0.587 + b * 0.114) > this.threshold;
+		if(!comparison){return false;}
+
+		// Luma is no use for these: it weights green so heavily that a pure red
+		// digit reads as darker than the background it sits on. The channels
+		// themselves separate them cleanly enough, and neither hue can be
+		// mistaken for the orange label beside it, which is bright in red *and*
+		// green where these are bright in only one.
+		return (r > this.colour && g < this.dim && b < this.dim)
+			|| (g > this.colour && r < this.dim && b < this.dim);
 	}
 
 	/**
@@ -54,16 +72,17 @@ export default class DigitReader
 	 * @param  {int} x1
 	 * @param  {int} y0
 	 * @param  {int} y1
+	 * @param  {boolean} comparison
 	 * @return {array}
 	 */
-	segment(buffer, x0, x1, y0, y1){
+	segment(buffer, x0, x1, y0, y1, comparison){
 		let columns = [];
 
 		for(let x = x0; x <= x1; x++){
 			let any = false;
 
 			for(let y = y0; y <= y1; y++){
-				if(this.lit(buffer, x, y)){any = true; break;}
+				if(this.lit(buffer, x, y, comparison)){any = true; break;}
 			}
 
 			columns.push(any);
@@ -85,7 +104,7 @@ export default class DigitReader
 
 			for(let x = span.from; x <= span.to; x++){
 				for(let y = y0; y <= y1; y++){
-					if(!this.lit(buffer, x, y)){continue;}
+					if(!this.lit(buffer, x, y, comparison)){continue;}
 					if(y < top){top = y;}
 					if(y > bottom){bottom = y;}
 				}
@@ -97,7 +116,7 @@ export default class DigitReader
 				let row = '';
 
 				for(let x = span.from; x <= span.to; x++){
-					row += this.lit(buffer, x, y) ? '1' : '0';
+					row += this.lit(buffer, x, y, comparison) ? '1' : '0';
 				}
 
 				bits.push(row);
@@ -164,10 +183,11 @@ export default class DigitReader
 	 * @param  {int} x        left edge to start scanning from
 	 * @param  {int} baseline y of the bottom row of the digits
 	 * @param  {boolean} lenient  drop unreadable glyphs instead of failing
+	 * @param  {boolean} comparison  the value may be coloured against another
 	 * @return {string}
 	 */
-	read(buffer, x, baseline, lenient){
-		let glyphs = this.segment(buffer, x, x + this.width, baseline - this.height - 1, baseline + 2);
+	read(buffer, x, baseline, lenient, comparison){
+		let glyphs = this.segment(buffer, x, x + this.width, baseline - this.height - 1, baseline + 2, comparison);
 		let value = '';
 
 		for(let i = 0; i < glyphs.length; i++){

@@ -253,8 +253,12 @@ export default class CrewReader
 			? this.digitReader.read(buffer, coordinates.level.x, coordinates.level.y, true)
 			: (this.getStat(buffer, coordinates.level.x, coordinates.level.y) || '').split(' ')[1];
 
+		// The Compare block scores each stat against whoever is selected and
+		// colours it green or red accordingly, so the values here are not the
+		// plain white the digits are usually drawn in. The level beside them
+		// is, being nothing to do with the comparison.
 		let stat = (name) => skin.digits
-			? this.digitReader.read(buffer, coordinates[name].x, coordinates[name].y, false)
+			? this.digitReader.read(buffer, coordinates[name].x, coordinates[name].y, false, true)
 			: this.getStat(buffer, coordinates[name].x, coordinates[name].y);
 
 		// Read the stats first: they are what separates crew whose names the OCR
