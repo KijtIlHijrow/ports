@@ -41,6 +41,20 @@ import CrewType from './ports/models/CrewType';
 import Crew from './ports/models/Crew';
 import Part from './ports/models/Part';
 
+/**
+ * Where a crew type's portrait is served from. Most of them are hotlinked from
+ * the wiki, but it has since deleted eight of the portraits this calculator
+ * asks for, and a deleted one draws as an empty box. Those eight are kept in
+ * the repository instead, written as 'crew/<name>.png' in crew.json.
+ * @param  {string} path
+ * @return {string}
+ */
+function portrait(path){
+	return path.indexOf('/images/') === 0
+		? 'https://runescape.wiki' + path
+		: '/ports/public/images/' + path;
+}
+
 const app = new Vue({
     el: '#app',
 
@@ -165,7 +179,7 @@ const app = new Vue({
     		
     		regions.forEach(region => {
     			region.sailors.forEach(sailor => {
-    				let crewType = new CrewType(sailor[1], 'https://runescape.wiki' + sailor[0], sailor[2], sailor[3], sailor[4], 0);
+    				let crewType = new CrewType(sailor[1], portrait(sailor[0]), sailor[2], sailor[3], sailor[4], 0);
     				this.crewTypes.push(crewType);
     			});
     		});
@@ -191,8 +205,26 @@ const app = new Vue({
                 crew = JSON.stringify(crew);
     		}
 
-            this.crew = JSON.parse(crew);
+            this.crew = JSON.parse(crew).map(member => this.refreshType(member));
     	},
+
+        /**
+         * Point a saved crew member back at the current definition of its type.
+         * A roster keeps its own copy of whatever the type looked like when it
+         * was read, so a portrait or a base stat corrected since then would
+         * never reach a roster that is already saved.
+         * @param  {Object} member
+         * @return {Object}
+         */
+        refreshType(member){
+            if(!member.type || !member.type.name){return member;}
+
+            let current = this.crewTypes.find(type => type.name === member.type.name);
+
+            if(current){member.type = current;}
+
+            return member;
+        },
         clearCrew(){
             localStorage.removeItem('crew');
             this.loadCrew();

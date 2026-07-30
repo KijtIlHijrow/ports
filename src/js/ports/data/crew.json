@@ -17,7 +17,7 @@
 				"0"
 			],
 			[
-				"/images/1/1b/Smuggler_%28Player-owned_port%29.png?b2694",
+				"crew/smuggler.png",
 				"Smuggler",
 				"0",
 				"0",
@@ -45,14 +45,14 @@
 				"150"
 			],
 			[
-				"/images/0/05/Dwarven_Engineer_%28Player-owned_port%29.png?638a8",
+				"crew/dwarven_engineer.png",
 				"Dwarven Engineer",
 				"0",
 				"0",
 				"0"
 			],
 			[
-				"/images/a/ac/Ardougne_Shopkeeper.png?26745",
+				"crew/ardougne_shopkeeper.png",
 				"Ardougne Shopkeeper",
 				"50",
 				"0",
@@ -66,14 +66,14 @@
 				"0"
 			],
 			[
-				"/images/5/58/First_Mate.png?b0318",
+				"crew/first_mate.png",
 				"First Mate",
 				"50",
 				"50",
 				"50"
 			],
 			[
-				"/images/1/17/Cyclops_%28Player-owned_port%29.png?29ac2",
+				"crew/cyclops.png",
 				"Cyclops",
 				"100",
 				"150",
@@ -174,7 +174,7 @@
 				"0"
 			],
 			[
-				"/images/0/06/Trader.png?20740",
+				"crew/trader.png",
 				"Trader",
 				"150",
 				"0",
@@ -275,7 +275,7 @@
 				"0"
 			],
 			[
-				"/images/1/1d/Bounty_Hunter.png?ad5a4",
+				"crew/bounty_hunter.png",
 				"Bounty Hunter",
 				"0",
 				"1,000",
@@ -397,7 +397,7 @@
 				"0"
 			],
 			[
-				"/images/e/e0/Wisp_%28Player-owned_port%29.png?2c3ee",
+				"crew/wisp.png",
 				"Wisp",
 				"300",
 				"750",

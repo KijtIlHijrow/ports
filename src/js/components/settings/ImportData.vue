@@ -26,9 +26,14 @@
 					// makes a partial file, such as one restoring only a roster,
 					// destroy everything it does not mention.
 					['captains', 'crew', 'parts', 'shipwright'].forEach(key => {
-						if(data[key] !== undefined){
-							this.$root[key] = data[key];
-						}
+						if(data[key] === undefined){return;}
+
+						// An exported roster carries its own copy of each crew
+						// type, so an old file would bring back the portraits
+						// that were wrong when it was written.
+						this.$root[key] = key === 'crew'
+							? data.crew.map(member => this.$root.refreshType(member))
+							: data[key];
 					});
 
 					this.$root.save();
