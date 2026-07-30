@@ -78,6 +78,10 @@ export default class CrewReader
 
 		this.digitReader = new DigitReader();
 
+		// How far below the Selected block the Compare block sits, once a read
+		// has settled it. See compareOffsets().
+		this.compareOffset = null;
+
 		// Every crew name the calculator knows about, for fuzzy-matching what the
 		// OCR returns. Matching garbled text against a hand-written list of exact
 		// misreadings only ever covered 26 of the 58 crew, and each new entry had
@@ -148,21 +152,101 @@ export default class CrewReader
 		}
 
 		let skin = location.skin;
-		let coordinates = skin.coordinates;
-		let gridX = location.gridX;
-		let gridY = location.gridY;
 
 		// Outline the grid the reader thinks it is looking at. Six columns of
 		// five, so a misplaced anchor is visible rather than silent.
-		alt1.overLayRect(a1lib.mixcolor(255, 255, 255), gridX, gridY, skin.grid.tile * 6, skin.grid.tile * 5, 2000, 1);
+		alt1.overLayRect(a1lib.mixcolor(255, 255, 255), location.gridX, location.gridY,
+			skin.grid.tile * 6, skin.grid.tile * 5, 2000, 1);
+
+		// The Compare block is the one that follows the mouse, and hovering a
+		// crew member cannot rearrange the roster the way clicking one does:
+		// a click in this interface puts that crew member on the ship.
+		let block = null;
+
+		for(let i = 0; i < this.compareOffsets().length; i++){
+			let offset = this.compareOffsets()[i];
+
+			block = this.readBlock(location, offset);
+
+			if(block){
+				// Where the block sits does not move between reads, so the
+				// search is worth paying for only once
+				this.compareOffset = offset;
+				break;
+			}
+		}
+
+		if(!block){
+			this.result = null;
+			return false;
+		}
+
+		this.result = {
+			type: block.type,
+			morale: block.stats.morale,
+			combat: block.stats.combat,
+			seafaring: block.stats.seafaring,
+			speed: block.stats.speed,
+			level: block.level || 0,
+			skin: skin.name,
+			tile: skin.grid.tile,
+			foundX: location.gridX,
+			foundY: location.gridY,
+		}
+
+		return true;
+	}
+
+	/**
+	 * Where to look for the Compare block, closest guess first
+	 *
+	 * It sits one panel below the Selected block — the two headings measured
+	 * 119 apart, and the block itself is 120 tall — but that was measured off a
+	 * screenshot that had been scaled down, so the exact row is worth hunting
+	 * for rather than asserting. Once one read succeeds the answer is known and
+	 * the hunt is over.
+	 *
+	 * @return {array}
+	 */
+	compareOffsets(){
+		if(this.compareOffset !== null && this.compareOffset !== undefined){
+			return [this.compareOffset];
+		}
+
+		let offsets = [];
+
+		for(let drift = 0; drift <= 6; drift++){
+			offsets.push(119 + drift);
+			if(drift){offsets.push(119 - drift);}
+		}
+
+		return offsets;
+	}
+
+	/**
+	 * Read one details-shaped block of the panel
+	 *
+	 * Selected and Compare are the same layout at different heights, so every
+	 * coordinate the reader knows applies to either once the region is moved.
+	 *
+	 * @param  {object} location
+	 * @param  {int} offsetY  how far below the Selected block to read
+	 * @return {object|null}  null when there is nothing there to read
+	 */
+	readBlock(location, offsetY){
+		let skin = location.skin;
+		let coordinates = skin.coordinates;
 
 		let x = location.x + skin.details.x;
-		let y = location.y + skin.details.y;
+		let y = location.y + skin.details.y + offsetY;
 		let width = skin.details.width;
 		let height = skin.details.height;
 
-		let detailsImage = a1lib.bindregion(x, y, width, height);
-		let buffer = detailsImage.toData(x, y , width, height);
+		let blockImage = a1lib.bindregion(x, y, width, height);
+
+		if(!blockImage){return null;}
+
+		let buffer = blockImage.toData(x, y, width, height);
 
 		let level = skin.digits
 			// "Level 3" — only the digits are wanted, and the word never matches
@@ -182,7 +266,7 @@ export default class CrewReader
 			speed: stat('speed') || 0,
 		};
 
-		let captain = this.isCaptain(detailsImage);
+		let captain = this.isCaptain(blockImage);
 		let type = {};
 
 		if(captain){
@@ -192,20 +276,13 @@ export default class CrewReader
 			type = this.getType(buffer, skin, stats);
 		}
 
-		this.result = {
-			type: type,
-			morale: stats.morale,
-			combat: stats.combat,
-			seafaring: stats.seafaring,
-			speed: stats.speed,
-			level: level || 0,
-			skin: skin.name,
-			tile: skin.grid.tile,
-			foundX: gridX,
-			foundY: gridY,
+		// Nothing is being hovered, or the block is not where we looked. Either
+		// way there is no reading here to report.
+		if(!type.found && !level && !stats.morale && !stats.combat && !stats.seafaring && !stats.speed){
+			return null;
 		}
 
-		return true;
+		return {type: type, stats: stats, level: level};
 	}
 
 	/**

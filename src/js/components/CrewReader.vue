@@ -24,14 +24,33 @@
 
 				showModal: false,
 				attempts: '',
+
+				// Sweeping: reading the whole roster by running the mouse over it
+				sweeping: false,
+				timer: null,
+				pending: null,
+				stable: 0,
+				swept: {},
+
+				// What the portraits said against what the panel said, which is
+				// the only way to check the scanner against the real client
+				agreed: 0,
+				disagreed: 0,
+				portraits: [],
 			}
 		},
 
 		mounted(){
 			window.events.$on('alt-1', this.read);
+			window.events.$on('roster-sweep-start', this.startSweeping);
+			window.events.$on('roster-sweep-stop', this.stopSweeping);
 
 			this.reader = crewReader();
 			this.scanner = rosterScanner();
+		},
+
+		beforeDestroy(){
+			this.stopSweeping();
 		},
 
 		computed: {
@@ -201,7 +220,7 @@
 			 * so this is only an escape hatch: if the client draws something the
 			 * files do not predict, a read of it says so, and the read costs
 			 * nothing because both halves are already to hand — the type from
-			 * the details panel, the tile from the mouse.
+			 * the panel, the tile from the mouse.
 			 *
 			 * @param  {object} result
 			 * @param  {object} tile
@@ -214,6 +233,172 @@
 				if(!buffer){return;}
 
 				this.scanner.remember(name, this.scanner.signature(buffer, tile.column, tile.row, result.tile));
+			},
+
+			/**
+			 * Read the whole roster by running the mouse across it
+			 *
+			 * Hovering fills in the Compare block, and unlike clicking it leaves
+			 * the roster alone, so the whole thing can be read in one sweep with
+			 * nothing to press per crew member. It fills in every stat and level
+			 * and, along the way, checks each portrait against what the panel
+			 * says that crew member actually is.
+			 *
+			 * @return {void}
+			 */
+			startSweeping(){
+				if(this.sweeping){return;}
+
+				this.sweeping = true;
+				this.pending = null;
+				this.stable = 0;
+				this.swept = {};
+				this.agreed = 0;
+				this.disagreed = 0;
+				this.portraits = [];
+
+				this.progress('Getting the portraits ready…');
+
+				this.scanner.prepare().then(() => {
+					if(!this.sweeping){return;}
+
+					// One scan first, so the portraits are aligned before any
+					// of them are judged against the panel
+					this.scanner.scan(this.owned());
+
+					this.timer = setInterval(this.poll, 120);
+					this.progress('Run the mouse over each crew member');
+				});
+			},
+
+			stopSweeping(){
+				if(this.sweeping && this.portraits.length){
+					console.log('RosterSweep', {
+						agreed: this.agreed,
+						disagreed: this.disagreed,
+						offset: this.scanner.offset,
+						compareOffset: this.reader.compareOffset,
+						seen: this.portraits,
+					});
+				}
+
+				this.sweeping = false;
+
+				if(this.timer){
+					clearInterval(this.timer);
+					this.timer = null;
+				}
+
+				this.progress('');
+			},
+
+			/**
+			 * Look at whatever the mouse is hovering, once per tick
+			 * @return {void}
+			 */
+			poll(){
+				if(!this.reader.read()){
+					return this.progress('Hover a crew member');
+				}
+
+				let result = this.reader.result;
+				let tile = this.tileUnderMouse(result);
+
+				if(!tile || tile.column < 2){
+					return this.progress('Hover a crew member in the roster');
+				}
+
+				if(!result.type.found || !result.type.name || result.type.name === 'captain'){
+					return this.progress('That one was not recognised — set its type by hand');
+				}
+
+				// The panel takes a frame or two to follow the mouse, so the
+				// same answer has to come back twice running before it can be
+				// tied to the tile the mouse is on. Crediting a stale panel to
+				// a new tile would file a crew member under the wrong slot.
+				let key = [
+					tile.column, tile.row, result.type.name,
+					result.morale, result.combat, result.seafaring, result.level,
+				].join(':');
+
+				if(key !== this.pending){
+					this.pending = key;
+					this.stable = 1;
+					return;
+				}
+
+				this.stable++;
+
+				// Act once, on the poll that settles it
+				if(this.stable !== 2){return;}
+
+				this.applyToSlot(RosterScanner.slotAt(tile.column, tile.row), result);
+				this.checkPortrait(result, tile, result.type.name);
+
+				this.swept[`${tile.column}:${tile.row}`] = true;
+				this.progress('');
+			},
+
+			/**
+			 * Ask the scanner what it makes of the tile being hovered
+			 *
+			 * The panel is the truth here, so this only records what the
+			 * portraits made of it rather than acting on the answer. The
+			 * hovered tile is also the one carrying the hover glow, so a
+			 * disagreement on it is worth seeing before it is trusted.
+			 *
+			 * @param  {object} result
+			 * @param  {object} tile
+			 * @param  {string} name
+			 * @return {void}
+			 */
+			checkPortrait(result, tile, name){
+				let buffer = this.scanner.captureAt(result.foundX, result.foundY, result.tile);
+
+				if(!buffer){return;}
+
+				let signature = this.scanner.signature(buffer, tile.column, tile.row, result.tile);
+
+				if(!signature){return;}
+
+				let nearest = this.scanner.nearest(signature, this.scanner.known(this.owned()));
+
+				if(nearest.name === name){this.agreed++;} else {this.disagreed++;}
+
+				this.portraits.push({
+					tile: `${tile.column},${tile.row}`,
+					panel: name,
+					portrait: nearest.name,
+					distance: Math.round(nearest.distance * 10) / 10,
+					runnerUp: Math.round(nearest.runnerUp * 10) / 10,
+				});
+			},
+
+			/**
+			 * The crew types this roster is known to hold
+			 * @return {array}
+			 */
+			owned(){
+				let names = this.crew
+					.filter(member => member.type && member.type.name)
+					.map(member => member.type.name);
+
+				return names.filter((name, i) => names.indexOf(name) === i);
+			},
+
+			/**
+			 * Tell the rest of the app how the sweep is going
+			 * @param  {string} message
+			 * @return {void}
+			 */
+			progress(message){
+				window.events.$emit('roster-sweep', {
+					sweeping: this.sweeping,
+					tiles: Object.keys(this.swept).length,
+					agreed: this.agreed,
+					disagreed: this.disagreed,
+					message: message || '',
+				});
 			},
 
 			/**
