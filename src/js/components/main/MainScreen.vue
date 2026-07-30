@@ -7,6 +7,9 @@
 			<!-- Clear ships -->
 			<clear-ship></clear-ship>
 
+			<!-- Read the whole roster in one pass -->
+			<roster-scan></roster-scan>
+
 			<!-- Grid with all the crew members -->
 			<div class="flex justify-center">
 				<div class="flex flex-wrap">
@@ -35,9 +38,10 @@
 	import VoyagesCalculator from './VoyagesCalculator';
 	import Results from './Results';
 	import ClearShip from './ClearShip';
+	import RosterScan from './RosterScan';
 
 	export default {
-		components: {Box, CrewDetails, VoyagesCalculator, Results, ClearShip},
+		components: {Box, CrewDetails, VoyagesCalculator, Results, ClearShip, RosterScan},
 
 		computed: {
 			captains(){return this.$root.captains},

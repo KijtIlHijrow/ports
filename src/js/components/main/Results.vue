@@ -14,6 +14,11 @@
 			Solidarity +{{ $root.result.solidarity }} &mdash; put the {{ $root.result.solidarity_bearer }} in the first crew slot
 		</p>
 
+		<div class="flex items-center mt-2">
+			<button class="text-white border border-white p-1" @click.prevent="findOnScreen">Find on screen</button>
+			<span class="ml-3 text-sm opacity-75">{{ finding }}</span>
+		</div>
+
 		<div class="mt-2 flex justify-between items-end">
 			<div class="w-1/2">
 				<p>{{ $root.result.parts.ram.name }}</p>
@@ -37,10 +42,13 @@
 </template>
 
 <script>
+	import { rosterScanner } from '../../ports/scripts/readers.js';
+
 	export default {
 		data(){
 			return {
 				show: false,
+				finding: '',
 			}
 		},
 
@@ -48,10 +56,72 @@
 			window.events.$on('result-calculated', data => {
 				this.$root.selected = null;
 				this.show = true;
+				this.finding = '';
 			});
 		},
 
 		methods: {
+			/**
+			 * Box the picked crew where they are sitting in the game's roster
+			 *
+			 * The calculator picks crew by slot number, and RuneScape reorders
+			 * the roster, so a slot number is no help in finding anyone. Their
+			 * portraits are, and the scan knows those.
+			 *
+			 * @return {void}
+			 */
+			findOnScreen(){
+				let picks = this.$root.result.crew
+					.filter(member => member.type && member.type.name)
+					.map(member => member.type.name);
+
+				if(!picks.length){
+					return this.finding = 'Nothing to find';
+				}
+
+				let found = rosterScanner().find(picks);
+
+				console.log('RosterScan', found);
+
+				if(!found.found){
+					return this.finding = 'Open the crew roster first';
+				}
+
+				if(!found.marks.length){
+					return this.finding = found.unknown == 25
+						? 'No portraits learned yet — run a roster scan'
+						: 'None of the picked crew were recognised';
+				}
+
+				rosterScanner().show(found.marks);
+
+				this.finding = this.summarise(found);
+			},
+
+			/**
+			 * Say what the boxes on screen mean
+			 * @param  {object} found
+			 * @return {string}
+			 */
+			summarise(found){
+				let notes = [];
+				let unsure = found.marks.filter(mark => !mark.certain).length;
+
+				if(unsure){
+					notes.push(`${unsure} amber: more of that type than the voyage needs`);
+				}
+
+				if(found.missing.length){
+					notes.push(`not found: ${found.missing.join(', ')}`);
+				}
+
+				if(found.unknown){
+					notes.push(`${found.unknown} ${found.unknown == 1 ? 'tile' : 'tiles'} unrecognised`);
+				}
+
+				return notes.length ? notes.join('; ') : 'All picked crew boxed in green';
+			},
+
 			/**
 			 * Mark this captain and crew as sailing on the given ship, which
 			 * takes them out of the next calculation without discarding them.

@@ -103,39 +103,61 @@ export default class CrewReader
 		});
 	}
 
-	read(){
+	/**
+	 * Find the crew interface on screen, and with it the roster grid
+	 *
+	 * Every coordinate either reader uses hangs off the "Close crew" button and
+	 * each skin carries its own offsets from it, so this is the one place that
+	 * has to work out which skin is on screen. The roster scanner needs the
+	 * same answer, which is why it is not buried inside read().
+	 *
+	 * @return {object|null}
+	 */
+	locate(){
 		let fullImage = a1lib.bindfullrs();
-		let skin = null, interfacePosition = null;
 
 		for(let i = 0; i < this.skins.length; i++){
-			let candidate = this.skins[i];
-			let reference = this.images[candidate.image];
+			let skin = this.skins[i];
+			let reference = this.images[skin.image];
 
 			// The base64 decode is async, so a reference may not be ready yet
 			if(!reference){continue;}
 
 			let position = a1lib.findsubimg(fullImage, reference);
 
-			if(position.length){
-				skin = candidate;
-				interfacePosition = position;
-				break;
-			}
+			if(!position.length){continue;}
+
+			return {
+				skin: skin,
+				x: position[0].x,
+				y: position[0].y,
+				gridX: position[0].x + skin.grid.x,
+				gridY: position[0].y + skin.grid.y,
+			};
 		}
 
-		if(!skin){
+		return null;
+	}
+
+	read(){
+		let location = this.locate();
+
+		if(!location){
 			this.result = null;
 			return false;
 		}
 
+		let skin = location.skin;
 		let coordinates = skin.coordinates;
-		let gridX = interfacePosition[0].x + skin.grid.x;
-		let gridY = interfacePosition[0].y + skin.grid.y;
+		let gridX = location.gridX;
+		let gridY = location.gridY;
 
-		alt1.overLayRect(a1lib.mixcolor(255, 255, 255), gridX, gridY, 350, 350, 2000, 1);
+		// Outline the grid the reader thinks it is looking at. Six columns of
+		// five, so a misplaced anchor is visible rather than silent.
+		alt1.overLayRect(a1lib.mixcolor(255, 255, 255), gridX, gridY, skin.grid.tile * 6, skin.grid.tile * 5, 2000, 1);
 
-		let x = interfacePosition[0].x + skin.details.x;
-		let y = interfacePosition[0].y + skin.details.y;
+		let x = location.x + skin.details.x;
+		let y = location.y + skin.details.y;
 		let width = skin.details.width;
 		let height = skin.details.height;
 
