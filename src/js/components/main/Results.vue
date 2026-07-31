@@ -68,6 +68,7 @@
 				// the roster layout those answers were true of
 				confirmed: {},
 				onShip: {},
+				hovering: null,
 				layout: '',
 
 				// What the voyage is after, and the last few things hovering
@@ -114,6 +115,7 @@
 				this.message = 'Reading the portraits…';
 				this.confirmed = {};
 				this.onShip = {};
+				this.hovering = null;
 				this.layout = '';
 				this.notes = [];
 
@@ -177,6 +179,9 @@
 					this.layout = layout;
 					this.confirmed = {};
 					this.onShip = {};
+
+					// Whoever was under the mouse may not be there any more
+					this.hovering = null;
 				}
 
 				let found = scanner.find(scan, picks, RosterScanner.aboard(scan, this.onShip));
@@ -219,6 +224,8 @@
 					scan.location.gridX, scan.location.gridY, tile, a1lib.mousePosition()
 				);
 
+				this.releaseHover(scan, where);
+
 				if(!where || where.column < 2){return;}
 
 				let key = `${where.column},${where.row}`;
@@ -237,6 +244,10 @@
 				let result = reader.result;
 
 				if(!result.type.found || !result.type.name || result.type.name === 'captain'){return;}
+
+				// Noted for releaseHover, which captures it once the mouse has
+				// moved off and taken the hover glow with it
+				this.hovering = {column: where.column, row: where.row, type: result.type.name};
 
 				let level = Number(result.level);
 
@@ -269,6 +280,42 @@
 				}
 
 				this.confirmed[key] = verdict;
+			},
+
+			/**
+			 * Learn a tile's portrait once the mouse has moved off it
+			 *
+			 * The ship's own row draws its tiles differently enough that a crew
+			 * member has to be seen there before being recognised there, and a
+			 * sweep can only ever capture whoever happened to be aboard at the
+			 * time. Everyone you send up there afterwards arrives unrecognised.
+			 *
+			 * Hovering names them, so pointing can learn them too — off the
+			 * hover, once the glow has gone, exactly as a sweep does.
+			 *
+			 * @param  {object} scan
+			 * @param  {object|null} where  the tile the mouse is on now
+			 * @return {void}
+			 */
+			releaseHover(scan, where){
+				let last = this.hovering;
+
+				if(!last){return;}
+				if(where && where.column === last.column && where.row === last.row){return;}
+
+				this.hovering = null;
+
+				let scanner = rosterScanner();
+				let tile = scan.location.skin.grid.tile;
+				let buffer = scanner.captureAt(scan.location.gridX, scan.location.gridY, tile);
+
+				if(!buffer){return;}
+
+				let signature = scanner.signature(buffer, last.column, last.row, tile);
+
+				if(signature && scanner.remember(last.type, signature)){
+					this.note(`learned what a ${last.type} looks like at ${last.column},${last.row}`);
+				}
 			},
 
 			/**

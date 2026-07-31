@@ -711,15 +711,26 @@ export default class RosterScanner
 		if(!scan){return [];}
 
 		return scan.tiles
-			.filter(tile => tile.row === 1 && tile.type && tile.type !== 'Empty')
+			.filter(tile => tile.row === 1)
 			.map(tile => {
 				let seen = known && known[`${tile.column},${tile.row}`];
 
-				return {
-					type: tile.type,
-					level: seen && seen.type === tile.type ? seen.level : null,
-				};
-			});
+				// Hovering says outright who is up there, and that stands on its
+				// own. Requiring the portrait to agree first threw the answer
+				// away for exactly the crew it was needed for: someone just
+				// moved into the ship's row has never been seen in it, the row
+				// draws its tiles differently, so the portrait cannot place them
+				// — and the crew member you had only just put aboard went on
+				// being asked for.
+				if(seen && (!tile.type || seen.type === tile.type)){
+					return seen.type === 'Empty' ? null : {type: seen.type, level: seen.level};
+				}
+
+				if(!tile.type || tile.type === 'Empty'){return null;}
+
+				return {type: tile.type, level: null};
+			})
+			.filter(entry => entry);
 	}
 
 	/**
