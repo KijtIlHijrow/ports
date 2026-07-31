@@ -629,15 +629,26 @@ export default class RosterScanner
 			if(pick.level){wanted[name].levels.push(pick.level);}
 		});
 
-		// Anything already aboard is one fewer to go and find — but only one
-		// fewer. Which of them is aboard cannot be told from a portrait, so no
-		// level is struck off the list: taking an arbitrary one off sent you
-		// hunting for a crew member already on the ship, and ruled out the tile
-		// holding the one you actually still needed.
-		(crewed || []).forEach(name => {
-			if(!wanted[name]){return;}
+		// Anything already aboard is one fewer to go and find.
+		//
+		// A portrait can say a Travelling Drunk is aboard but never which one,
+		// so by default only the count comes down and every level stays on the
+		// list — striking an arbitrary one off sent you hunting for a crew
+		// member already on the ship and ruled out the tile holding the one you
+		// still needed. Hovering the ship's row says exactly who is up there,
+		// and then the right level can come off.
+		(crewed || []).forEach(entry => {
+			let name = entry && entry.type;
+
+			if(!name || !wanted[name]){return;}
 
 			wanted[name].count--;
+
+			if(entry.level){
+				let at = wanted[name].levels.indexOf(entry.level);
+
+				if(at !== -1){wanted[name].levels.splice(at, 1);}
+			}
 
 			if(wanted[name].count <= 0){delete wanted[name];}
 		});
@@ -687,13 +698,28 @@ export default class RosterScanner
 
 	/**
 	 * What the ship's own row is currently crewed with
+	 *
+	 * Portraits give the type and no more. A level appears here only for tiles
+	 * that have been hovered, since only the panel knows which of several
+	 * identical crew is the one sitting up there.
+	 *
 	 * @param  {object} scan
-	 * @return {array}
+	 * @param  {object} known  levels learned by hovering, keyed "column,row"
+	 * @return {array}  {type, level}
 	 */
-	static aboard(scan){
+	static aboard(scan, known){
 		if(!scan){return [];}
 
-		return scan.tiles.filter(tile => tile.row === 1 && tile.type).map(tile => tile.type);
+		return scan.tiles
+			.filter(tile => tile.row === 1 && tile.type && tile.type !== 'Empty')
+			.map(tile => {
+				let seen = known && known[`${tile.column},${tile.row}`];
+
+				return {
+					type: tile.type,
+					level: seen && seen.type === tile.type ? seen.level : null,
+				};
+			});
 	}
 
 	/**

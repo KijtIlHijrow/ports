@@ -21,6 +21,12 @@
 			<span class="ml-3 text-sm opacity-75">{{ message }}</span>
 		</div>
 
+		<div v-if="finding" class="text-xs opacity-75 mt-1">
+			<p>Wants: {{ looking }}</p>
+			<p>Hover the ship's row as well, to pin down which of them are already aboard.</p>
+			<p v-for="line in notes">{{ line }}</p>
+		</div>
+
 		<div class="mt-2 flex justify-between items-end">
 			<div class="w-1/2">
 				<p>{{ $root.result.parts.ram.name }}</p>
@@ -58,10 +64,17 @@
 				timer: null,
 				message: '',
 
-				// Tiles settled by hovering them, and the roster layout those
-				// answers were true of
+				// Tiles settled by hovering them, who is on the ship's row, and
+				// the roster layout those answers were true of
 				confirmed: {},
+				onShip: {},
 				layout: '',
+
+				// What the voyage is after, and the last few things hovering
+				// settled — on screen, because a console object is no use to
+				// anyone reading it off a screenshot
+				looking: '',
+				notes: [],
 			}
 		},
 
@@ -100,17 +113,20 @@
 				this.finding = true;
 				this.message = 'Reading the portraits…';
 				this.confirmed = {};
+				this.onShip = {};
 				this.layout = '';
-
-				let picks = this.$root.result.crew
-					.filter(member => member.type && member.type.name)
-					.map(member => `${member.type.name} lvl ${member.level}`);
+				this.notes = [];
 
 				// What the voyage is actually asking for. If a level here does
 				// not match anything in the roster, the picks are describing
-				// crew as they were before the roster last moved — recalculating
-				// after a sweep is what puts that right.
-				console.log(`Pointing  looking for: ${picks.join(', ')}`);
+				// crew as they were before the roster last moved, and
+				// recalculating after a sweep is what puts that right.
+				this.looking = this.$root.result.crew
+					.filter(member => member.type && member.type.name)
+					.map(member => `${member.type.name} lvl ${member.level}`)
+					.join(', ');
+
+				console.log(`Pointing  looking for: ${this.looking}`);
 
 				rosterScanner().prepare().then(() => {
 					if(!this.finding){return;}
@@ -160,9 +176,10 @@
 				if(layout !== this.layout){
 					this.layout = layout;
 					this.confirmed = {};
+					this.onShip = {};
 				}
 
-				let found = scanner.find(scan, picks, RosterScanner.aboard(scan));
+				let found = scanner.find(scan, picks, RosterScanner.aboard(scan, this.onShip));
 
 				this.askThePanel(scan, found);
 
@@ -202,34 +219,68 @@
 					scan.location.gridX, scan.location.gridY, tile, a1lib.mousePosition()
 				);
 
-				if(!where){return;}
+				if(!where || where.column < 2){return;}
 
-				let mark = found.marks.find(m => !m.certain
+				let key = `${where.column},${where.row}`;
+				let onShip = where.row === 1;
+
+				let mark = onShip ? null : found.marks.find(m => !m.certain
 					&& m.tile.column === where.column && m.tile.row === where.row);
 
-				if(!mark){return;}
+				// Nothing to settle here: a tile that is already certain, or one
+				// no pick is asking about
+				if(!onShip && !mark){return;}
 
 				// The scan has already found the interface this tick
 				if(!reader.read(scan.location)){return;}
 
 				let result = reader.result;
 
-				// The panel is showing something else, most likely because the
-				// mouse has moved on since. Better no answer than a wrong one.
-				if(!result.type.found || result.type.name !== mark.type){return;}
+				if(!result.type.found || !result.type.name || result.type.name === 'captain'){return;}
 
 				let level = Number(result.level);
+
+				// Hovering the ship's own row says which of several identical
+				// crew is the one already up there, which is the difference
+				// between striking the right level off the wanted list and
+				// sending you after somebody who has already sailed.
+				if(onShip){
+					let held = this.onShip[key];
+
+					if(!held || held.type !== result.type.name || held.level !== level){
+						this.onShip[key] = {type: result.type.name, level: level};
+						this.note(`${key} aboard: ${result.type.name} level ${result.level}`);
+					}
+
+					return;
+				}
+
+				// The panel is showing something else, most likely because the
+				// mouse has moved on since. Better no answer than a wrong one.
+				if(result.type.name !== mark.type){return;}
+
 				let wanted = mark.levels.map(Number);
 				let verdict = wanted.indexOf(level) !== -1;
-				let key = `${where.column},${where.row}`;
 
 				if(this.confirmed[key] !== verdict){
-					console.log(`Pointing  ${key} is a ${mark.type} level ${result.level}`
-						+ `  wanted ${wanted.length ? wanted.join(' or ') : '(no level recorded)'}`
-						+ `  -> ${verdict ? 'this one' : 'not this one'}`);
+					this.note(`${key} is a ${mark.type} level ${result.level}`
+						+ `, wanted ${wanted.length ? wanted.join(' or ') : '(none recorded)'}`
+						+ ` — ${verdict ? 'this one' : 'not this one'}`);
 				}
 
 				this.confirmed[key] = verdict;
+			},
+
+			/**
+			 * Put a line where it can be read without opening a console
+			 * @param  {string} line
+			 * @return {void}
+			 */
+			note(line){
+				console.log('Pointing  ' + line);
+
+				this.notes.unshift(line);
+				this.notes = this.notes.slice(0, 4);
 			},
 
 			/**
