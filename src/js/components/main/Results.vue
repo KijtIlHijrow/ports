@@ -123,7 +123,7 @@
 				// recalculating after a sweep is what puts that right.
 				this.looking = this.$root.result.crew
 					.filter(member => member.type && member.type.name)
-					.map(member => `${member.type.name} lvl ${member.level}`)
+					.map(member => `${member.type.name} lvl ${this.levelOf(member) || '?'}`)
 					.join(', ');
 
 				console.log(`Pointing  looking for: ${this.looking}`);
@@ -153,7 +153,7 @@
 			point(){
 				let picks = this.$root.result.crew
 					.filter(member => member.type && member.type.name && member.type.name !== 'Empty')
-					.map(member => ({type: member.type.name, level: member.level}));
+					.map(member => ({type: member.type.name, level: this.levelOf(member)}));
 
 				if(!picks.length){
 					this.message = 'Nothing to find';
@@ -281,6 +281,25 @@
 
 				this.notes.unshift(line);
 				this.notes = this.notes.slice(0, 4);
+			},
+
+			/**
+			 * What level a picked crew member is
+			 *
+			 * The roster record is the authority. A pick is a copy made for the
+			 * sums, and a copy is only as complete as whoever wrote it — the
+			 * level went missing from one for exactly that reason, and every
+			 * crew member on screen was then compared against nothing.
+			 *
+			 * @param  {object} member
+			 * @return {int|string|undefined}
+			 */
+			levelOf(member){
+				if(member.level){return member.level;}
+
+				let record = this.$root.crew.find(crew => crew.id === member.id);
+
+				return record ? record.level : undefined;
 			},
 
 			/**

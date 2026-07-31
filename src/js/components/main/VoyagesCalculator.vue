@@ -77,6 +77,11 @@
 						morale: num(c.morale),
 						combat: num(c.combat),
 						seafaring: num(c.seafaring),
+
+						// The sums never touch this, but the result is what gets
+						// pointed at on screen, and a level is the only thing
+						// separating four Travelling Drunks who share a portrait
+						level: c.level,
 					}
 				});
 
