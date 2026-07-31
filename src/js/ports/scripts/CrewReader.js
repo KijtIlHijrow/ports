@@ -58,7 +58,7 @@ export default class CrewReader
 				name: 'modern',
 				image: 'closeCrewModern',
 				details: {x: 263, y: 26, width: 195, height: 120},
-				grid: {x: -100, y: 38, tile: 53},
+				grid: {x: -100, y: 38, tile: 52},
 				nameColors: ['tan', 'orange'],
 				coordinates: Object.assign({}, this.coordinates, {level: {x: 11, y: 94}}),
 				// The current client anti-aliases its numbers and no OCR font
@@ -69,7 +69,7 @@ export default class CrewReader
 				name: 'legacy',
 				image: 'closeCrew',
 				details: {x: 275, y: 150, width: 195, height: 120},
-				grid: {x: -87, y: 40, tile: 53},
+				grid: {x: -87, y: 40, tile: 52},
 				nameColors: ['orange'],
 				coordinates: this.coordinates,
 				digits: false,

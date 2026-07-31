@@ -163,7 +163,7 @@
 				if(!position){return null;}
 
 				// Tile size comes from whichever interface skin was matched
-				let tile = result.tile || 53;
+				let tile = result.tile || 52;
 
 				let column = Math.ceil((position.x - result.foundX) / tile);
 				let row = Math.ceil((position.y - result.foundY) / tile);
@@ -462,7 +462,7 @@
 					runnerUp: Math.round(nearest.runnerUp * 10) / 10,
 				});
 
-				this.previous = {column: tile.column, row: tile.row, name: name};
+				this.previous = {column: tile.column, row: tile.row, name: name, level: result.level};
 			},
 
 			/**
@@ -500,6 +500,14 @@
 				let plain = this.scanner.signature(buffer, previous.column, previous.row, this.grid.tile);
 
 				if(plain && this.scanner.remember(previous.name, plain)){this.captured++;}
+
+				// The corner where the level is printed, taken at the same
+				// moment. It is what tells two crew of one type apart later,
+				// and this is the only time both halves are to hand: the
+				// portrait says which type, the panel said which level.
+				let corner = this.scanner.corner(buffer, previous.column, previous.row, this.grid.tile);
+
+				this.scanner.rememberBadge(previous.name, previous.level, corner);
 			},
 
 			/**

@@ -263,7 +263,7 @@
 
 				// Noted for releaseHover, which captures it once the mouse has
 				// moved off and taken the hover glow with it
-				this.hovering = {column: where.column, row: where.row, type: result.type.name};
+				this.hovering = {column: where.column, row: where.row, type: result.type.name, level: result.level};
 
 				let level = Number(result.level);
 
@@ -331,6 +331,14 @@
 
 				if(signature && scanner.remember(last.type, signature)){
 					this.note(`learned what a ${last.type} looks like at ${last.column},${last.row}`);
+				}
+
+				// And which of several identical crew this one is, so the next
+				// scan can tell them apart without being hovered at all
+				let corner = scanner.corner(buffer, last.column, last.row, tile);
+
+				if(scanner.rememberBadge(last.type, last.level, corner)){
+					this.note(`learned the level ${last.level} badge for a ${last.type}`);
 				}
 			},
 

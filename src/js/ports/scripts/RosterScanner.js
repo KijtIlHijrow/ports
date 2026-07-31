@@ -30,10 +30,23 @@ export default class RosterScanner
 		this.captainColumn = 1;
 
 		// Where the portrait sits inside its tile, as a fraction of the tile.
-		// The art is 37px in a 53px tile, centred, and measuring it in
+		// The art is 37px in a 52px tile, centred, and measuring it in
 		// fractions rather than pixels keeps this independent of the interface
 		// scale in the same way the tile pitch already is.
-		this.portrait = {from: 8 / 53, to: 45 / 53};
+		this.portrait = {from: 7 / 52, to: 44 / 52};
+
+		// Where the level is printed, as a fraction of the portrait. Kept at
+		// full resolution rather than averaged into blocks: the digit is four
+		// pixels wide and an average loses it in the face behind it.
+		this.badge = {from: 0.58, to: 1};
+
+		// Two badges this far apart are different levels. Measured across a
+		// roster: crew of one type at the same level match to the pixel, and
+		// the closest pair at different levels sat 8.4 apart.
+		this.badgeAccept = 4;
+		this.badgeMargin = 4;
+
+		this.badgeKey = 'crewBadges';
 
 		// A portrait is reduced to the average colour of each cell of a 6x6
 		// grid: coarse enough to shrug off a pixel of drift and the client's
@@ -71,7 +84,7 @@ export default class RosterScanner
 		// margin check then declines half the roster. The error is a constant —
 		// the grid is found by exact pixel match and the tiles are evenly
 		// spaced — so it is worth finding once and then reusing.
-		this.search = 3;
+		this.search = 5;
 		this.offset = null;
 
 		// Appearances kept per crew type. The ship's own row draws its tiles
@@ -87,7 +100,9 @@ export default class RosterScanner
 		this.loading = null;
 
 		// Corrections the player has made, which outrank the bundled art
-		this.key = 'crewPortraits';
+		// Bumped when the grid geometry changed: everything learned before was
+		// captured at a drifting position and describes tiles that no longer exist
+		this.key = 'crewPortraits2';
 	}
 
 	/**
@@ -367,6 +382,133 @@ export default class RosterScanner
 	}
 
 	/**
+	 * The corner of a tile where its level is printed
+	 *
+	 * A portrait names a crew type and can never do better, so four Travelling
+	 * Drunks are four identical answers. The level is the only thing on the
+	 * tile that separates them, and reading the digit needs a font we do not
+	 * have: the badge is drawn a size smaller than the details panel, a "5"
+	 * being 4x8 there against 5x9 in the panel, and every panel template scores
+	 * it below threshold.
+	 *
+	 * It does not have to be read, though. Two crew of one type have identical
+	 * portraits, so their corners can only differ by the number printed on
+	 * them — which makes "is this the level 3 one" answerable without ever
+	 * knowing what a 3 looks like.
+	 *
+	 * @param  {ImageData} buffer  the whole grid
+	 * @param  {int} column        1 based
+	 * @param  {int} row           1 based
+	 * @param  {int} tile
+	 * @return {array|null}
+	 */
+	corner(buffer, column, row, tile){
+		let nudge = this.offset || {x: 0, y: 0};
+
+		let art = Math.round(tile * this.portrait.from);
+		let size = Math.round(tile * (this.portrait.to - this.portrait.from));
+
+		let left = ((column - 1) * tile) + art + nudge.x + Math.round(size * this.badge.from);
+		let top = ((row - 1) * tile) + art + nudge.y + Math.round(size * this.badge.from);
+		let box = Math.round(size * (this.badge.to - this.badge.from));
+
+		if(left < 0 || top < 0){return null;}
+		if(left + box > buffer.width || top + box > buffer.height){return null;}
+
+		let out = [];
+
+		for(let y = top; y < top + box; y++){
+			for(let x = left; x < left + box; x++){
+				let i = ((y * buffer.width) + x) * 4;
+
+				out.push(buffer.data[i], buffer.data[i + 1], buffer.data[i + 2]);
+			}
+		}
+
+		return out;
+	}
+
+	/**
+	 * Corners seen before, keyed by crew type and level
+	 * @return {object}
+	 */
+	badges(){
+		try {
+			return JSON.parse(localStorage.getItem(this.badgeKey)) || {};
+		} catch(e) {
+			return {};
+		}
+	}
+
+	/**
+	 * Remember what this crew type looks like at this level
+	 * @param  {string} type
+	 * @param  {int|string} level
+	 * @param  {array} corner
+	 * @return {boolean}
+	 */
+	rememberBadge(type, level, corner){
+		if(!type || type === 'Empty' || type === 'captain' || !level || !corner){return false;}
+
+		let badges = this.badges();
+		let key = `${type}|${level}`;
+		let samples = badges[key] || [];
+
+		for(let i = 0; i < samples.length; i++){
+			if(RosterScanner.distance(corner, samples[i]) < this.badgeAccept){return false;}
+		}
+
+		badges[key] = [corner].concat(samples).slice(0, this.samples);
+
+		localStorage.setItem(this.badgeKey, JSON.stringify(badges));
+
+		return true;
+	}
+
+	/**
+	 * What level the crew member in this tile is
+	 *
+	 * Only levels seen before for this crew type can be answered, which is all
+	 * that is ever asked: the question is only ever which of the ones in the
+	 * roster this is.
+	 *
+	 * @param  {array} corner
+	 * @param  {string} type
+	 * @param  {object} badges  passed in so a scan reads storage once
+	 * @return {int|null}
+	 */
+	levelOf(corner, type, badges){
+		if(!corner || !type){return null;}
+
+		let best = null, bestDistance = Infinity, runnerUp = Infinity;
+
+		Object.keys(badges).forEach(key => {
+			if(key.indexOf(type + '|') !== 0){return;}
+
+			let level = key.slice(type.length + 1);
+			let distance = (badges[key] || []).reduce(
+				(closest, sample) => Math.min(closest, RosterScanner.distance(corner, sample)), Infinity
+			);
+
+			if(distance < bestDistance){
+				runnerUp = bestDistance;
+				bestDistance = distance;
+				best = level;
+			} else if(distance < runnerUp){
+				runnerUp = distance;
+			}
+		});
+
+		if(best === null || bestDistance > this.badgeAccept){return null;}
+
+		// Only one level of this type has ever been seen, so there is nothing
+		// to have told it apart from
+		if(runnerUp === Infinity){return Number(best);}
+
+		return (runnerUp - bestDistance) >= this.badgeMargin ? Number(best) : null;
+	}
+
+	/**
 	 * Mean per-channel difference between two signatures
 	 * @param  {array} a
 	 * @param  {array} b
@@ -561,6 +703,7 @@ export default class RosterScanner
 		if(!buffer){return null;}
 
 		let known = this.known(candidates);
+		let badges = this.badges();
 
 		// Where the art sits in a tile is the same every time, so this is paid
 		// once rather than on every pass
@@ -577,10 +720,15 @@ export default class RosterScanner
 				// gates, so a scan that names nothing can still say why
 				let near = signature ? this.nearest(signature, known) : null;
 
+				// Which of several identical crew this is, where the corner has
+				// been seen before
+				let level = match ? this.levelOf(this.corner(buffer, column, row, tile), match.name, badges) : null;
+
 				tiles.push({
 					slot: RosterScanner.slotAt(column, row),
 					column: column,
 					row: row,
+					level: level,
 					x: location.gridX + ((column - 1) * tile),
 					y: location.gridY + ((row - 1) * tile),
 					size: tile,
@@ -690,6 +838,24 @@ export default class RosterScanner
 
 			holding[tile.type] = holding[tile.type] || [];
 			holding[tile.type].push(tile);
+		});
+
+		// A tile whose level is known answers the question a portrait cannot,
+		// so it needs no hovering and no reading of the number by eye
+		Object.keys(holding).forEach(name => {
+			if(!wanted[name] || !wanted[name].levels.length){return;}
+
+			let named = holding[name].filter(tile => tile.level);
+
+			if(!named.length){return;}
+
+			let matching = named.filter(tile => wanted[name].levels.some(
+				level => Number(level) === Number(tile.level)
+			));
+
+			// Every level wanted has been found by its own badge, so the rest
+			// of that type are not candidates at all
+			if(matching.length >= wanted[name].count){holding[name] = matching;}
 		});
 
 		let marks = [], missing = [];
