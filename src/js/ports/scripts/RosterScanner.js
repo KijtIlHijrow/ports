@@ -74,6 +74,14 @@ export default class RosterScanner
 		this.search = 3;
 		this.offset = null;
 
+		// Appearances kept per crew type. The ship's own row draws its tiles
+		// differently enough to matter — the same Travelling Drunk measures 19
+		// there against 12 everywhere else — so a type needs room for both.
+		this.samples = 4;
+
+		// Two captures this close are the same appearance twice
+		this.duplicate = 3;
+
 		// Signatures of the bundled art, once computed
 		this.templates = null;
 		this.loading = null;
@@ -103,7 +111,11 @@ export default class RosterScanner
 	 * @return {array}
 	 */
 	static portraits(){
-		let all = [];
+		// An empty slot is drawn from art like any other, and it is not in
+		// crew.json because it is not a crew type. Without it the scanner has
+		// nothing to answer an empty tile with and reaches for the nearest real
+		// crew member instead — one read as a Travelling Drunk from 47 away.
+		let all = [{name: 'Empty', src: '/ports/public/images/empty.png'}];
 
 		crewRegions.forEach(region => {
 			region.sailors.forEach(sailor => {
@@ -426,16 +438,22 @@ export default class RosterScanner
 	remember(name, signature){
 		if(!name || !signature || name === 'captain'){return false;}
 
-		let known = this.known();
-		let samples = known[name] || [];
+		let corrections = this.library();
+		let samples = corrections[name] || [];
 
-		// An appearance already covered teaches nothing
+		// Measured against what has already been captured from this client, and
+		// only a near-identical capture counts as one we have.
+		//
+		// This used to measure against the bundled art as well, at half the
+		// accept threshold, which is what stopped it learning anything: the
+		// whole reason to capture is that the client draws a portrait ten to
+		// twenty units away from the art, and that was exactly the distance
+		// being read as "already had it". Nineteen crew read, five kept.
 		for(let i = 0; i < samples.length; i++){
-			if(RosterScanner.distance(signature, samples[i]) < this.accept / 2){return false;}
+			if(RosterScanner.distance(signature, samples[i]) < this.duplicate){return false;}
 		}
 
-		let corrections = this.library();
-		corrections[name] = [signature].concat(corrections[name] || []).slice(0, 3);
+		corrections[name] = [signature].concat(samples).slice(0, this.samples);
 
 		localStorage.setItem(this.key, JSON.stringify(corrections));
 
