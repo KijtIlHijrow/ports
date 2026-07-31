@@ -186,6 +186,8 @@
 
 				let found = scanner.find(scan, picks, RosterScanner.aboard(scan, this.onShip));
 
+				found.room = RosterScanner.room(scan, this.onShip);
+
 				this.askThePanel(scan, found);
 
 				found.marks.forEach(mark => {
@@ -374,6 +376,18 @@
 			 */
 			summarise(found){
 				let notes = [];
+
+				// The ship's row says how many more crew can actually be taken.
+				// More boxes than that means some of the crew already aboard
+				// could not be named, so their picks are still being asked for —
+				// worth saying, rather than quietly pointing at crew there is no
+				// room for.
+				let room = found.room;
+
+				if(room && found.marks.length > room.free){
+					notes.push(`${room.free === 0 ? 'no' : room.free} slot${room.free === 1 ? '' : 's'} free on the ship`
+						+ (room.unknown ? `, and ${room.unknown} aboard not recognised — hover the ship's row` : ''));
+				}
 				let unsure = found.marks.filter(mark => !mark.certain).length;
 				let sure = found.marks.length - unsure;
 

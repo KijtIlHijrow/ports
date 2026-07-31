@@ -734,6 +734,39 @@ export default class RosterScanner
 	}
 
 	/**
+	 * How much room is left on the ship
+	 *
+	 * The ship's row is the ground truth about how many more crew can be taken,
+	 * whoever we can or cannot name. An unrecognised tile counts as occupied:
+	 * an empty slot has art like anything else, so a tile we cannot place is
+	 * far more likely to be a crew member drawn in a way we have not seen than
+	 * an empty slot we would have matched.
+	 *
+	 * @param  {object} scan
+	 * @param  {object} known  levels learned by hovering
+	 * @return {object|null}  {free, unknown}
+	 */
+	static room(scan, known){
+		if(!scan){return null;}
+
+		let row = scan.tiles.filter(tile => tile.row === 1);
+
+		if(!row.length){return null;}
+
+		let free = 0, unknown = 0;
+
+		row.forEach(tile => {
+			let seen = known && known[`${tile.column},${tile.row}`];
+			let type = (seen && (!tile.type || seen.type === tile.type)) ? seen.type : tile.type;
+
+			if(type === 'Empty'){free++;}
+			else if(!type){unknown++;}
+		});
+
+		return {free: free, unknown: unknown};
+	}
+
+	/**
 	 * Draw boxes on the game screen around the tiles we found
 	 * @param  {array} marks    from find()
 	 * @param  {int} seconds
