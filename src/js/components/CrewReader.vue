@@ -39,9 +39,10 @@
 				captured: 0,
 				portraits: [],
 
-				// The tile confirmed just before this one, which the mouse has
-				// since left
+				// The tile confirmed just before this one, waiting for the mouse
+				// to leave it, and the grid it sits in
 				previous: null,
+				grid: null,
 
 				// Tiles the panel would not name, and what the OCR saw there
 				missed: {},
@@ -278,6 +279,7 @@
 				this.disagreed = 0;
 				this.captured = 0;
 				this.previous = null;
+				this.grid = null;
 				this.portraits = [];
 				this.missed = {};
 
@@ -356,15 +358,27 @@
 			 */
 			poll(){
 				if(!this.reader.read()){
+					// Moving off the roster entirely still frees the tile just
+					// left, which is how the last crew member of a sweep gets
+					// captured at all
+					this.releasePrevious(null);
 					return this.progress('Hover a crew member');
 				}
 
 				let result = this.reader.result;
+
+				// Where the grid is, so a tile can still be captured on a tick
+				// where nothing is being hovered
+				this.grid = {x: result.foundX, y: result.foundY, tile: result.tile};
+
 				let tile = this.tileUnderMouse(result);
 
 				if(!tile || tile.column < 2){
+					this.releasePrevious(null);
 					return this.progress('Hover a crew member in the roster');
 				}
+
+				this.releasePrevious(tile);
 
 				if(!result.type.found || !result.type.name || result.type.name === 'captain'){
 					// Record why, once per tile. "Not recognised" on its own says
@@ -448,22 +462,44 @@
 					runnerUp: Math.round(nearest.runnerUp * 10) / 10,
 				});
 
-				// The tile read a moment ago is no longer under the mouse, so it
-				// is the same crew member without the hover glow: this is the one
-				// moment a portrait can be captured from this client and named
-				// with certainty. Hovering does not reorder the roster, so unlike
-				// the version that clicked, that tile is still who it was.
-				//
-				// It matters because the bundled art lands about twelve units
-				// from what the client actually draws, which is close enough to
-				// rank correctly and too far to clear the margin.
-				if(this.previous && (this.previous.column !== tile.column || this.previous.row !== tile.row)){
-					let plain = this.scanner.signature(buffer, this.previous.column, this.previous.row, result.tile);
-
-					if(plain && this.scanner.remember(this.previous.name, plain)){this.captured++;}
-				}
-
 				this.previous = {column: tile.column, row: tile.row, name: name};
+			},
+
+			/**
+			 * Capture a tile the mouse has moved off
+			 *
+			 * Once it is no longer hovered it is the same crew member without
+			 * the hover glow, and it still carries a name the panel gave us
+			 * rather than a guess. That is the one moment a portrait can be
+			 * taken from this client and be certain whose it is — hovering does
+			 * not reorder the roster, so the tile is still who it was.
+			 *
+			 * It matters because the bundled art lands ten to twenty units from
+			 * what the client draws: close enough to rank correctly, too far to
+			 * clear the margin. Captured, a tile sits on its own record at zero.
+			 *
+			 * Moving anywhere else is enough, including off the roster
+			 * altogether. Waiting for the next crew member to be confirmed
+			 * instead meant the last one swept was never captured.
+			 *
+			 * @param  {object|null} tile  where the mouse is now
+			 * @return {void}
+			 */
+			releasePrevious(tile){
+				let previous = this.previous;
+
+				if(!previous || !this.grid){return;}
+				if(tile && tile.column === previous.column && tile.row === previous.row){return;}
+
+				this.previous = null;
+
+				let buffer = this.scanner.captureAt(this.grid.x, this.grid.y, this.grid.tile);
+
+				if(!buffer){return;}
+
+				let plain = this.scanner.signature(buffer, previous.column, previous.row, this.grid.tile);
+
+				if(plain && this.scanner.remember(previous.name, plain)){this.captured++;}
 			},
 
 			/**
