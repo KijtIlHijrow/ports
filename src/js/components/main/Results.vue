@@ -77,6 +77,7 @@
 				// anyone reading it off a screenshot
 				looking: '',
 				notes: [],
+				warned: false,
 			}
 		},
 
@@ -120,6 +121,7 @@
 				this.pending = null;
 				this.layout = '';
 				this.notes = [];
+				this.warned = false;
 
 				// What the voyage is actually asking for. If a level here does
 				// not match anything in the roster, the picks are describing
@@ -286,7 +288,21 @@
 				// mouse has moved on since. Better no answer than a wrong one.
 				if(result.type.name !== mark.type){return;}
 
-				let wanted = mark.levels.map(Number);
+				let wanted = mark.levels.map(Number).filter(Boolean);
+
+				// Nothing to judge against. Calling this "not this one" would be
+				// a verdict on a question never asked, and it put a red cross
+				// through every candidate on screen.
+				if(!wanted.length){
+					if(!this.warned){
+						this.warned = true;
+						this.note('no level recorded for the crew this voyage wants'
+							+ ' — sweep the roster with every ship home, then calculate again');
+					}
+
+					return;
+				}
+
 				let verdict = wanted.indexOf(level) !== -1;
 
 				if(this.confirmed[key] !== verdict){
@@ -398,6 +414,15 @@
 			 */
 			summarise(found){
 				let notes = [];
+
+				// Without levels the picks cannot be told from their look-alikes
+				// at all, and the roster is the only place that knows them
+				let unlevelled = this.$root.result.crew
+					.filter(member => member.type && member.type.name && !this.levelOf(member)).length;
+
+				if(unlevelled){
+					notes.push(`${unlevelled} of the picks have no level recorded — sweep the roster`);
+				}
 
 				// The ship's row says how many more crew can actually be taken.
 				// More boxes than that means some of the crew already aboard
