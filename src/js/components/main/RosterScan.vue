@@ -100,14 +100,15 @@
 
 					let lines = [
 						`RosterRead  ${named.length} of ${scan.tiles.length} named  art offset ${offset.x},${offset.y}`,
-						'tile   named                     nearest                   dist  runnerUp',
+						'tile   named                     nearest                lvl  dist  runnerUp',
 					];
 
 					scan.tiles.forEach(t => {
 						lines.push(
 							`${t.column},${t.row}`.padEnd(6)
 							+ (t.type || '-').padEnd(26)
-							+ (t.nearest || '-').padEnd(26)
+							+ (t.nearest || '-').padEnd(22)
+							+ String(t.level === null || t.level === undefined ? '-' : t.level).padStart(4)
 							+ (t.nearestDistance === null ? '' : t.nearestDistance.toFixed(1)).padStart(5)
 							+ (t.runnerUp === null || t.runnerUp === Infinity ? '' : t.runnerUp.toFixed(1)).padStart(10)
 							+ (t.type ? '' : '   <- declined')

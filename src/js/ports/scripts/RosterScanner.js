@@ -84,7 +84,7 @@ export default class RosterScanner
 		// margin check then declines half the roster. The error is a constant —
 		// the grid is found by exact pixel match and the tiles are evenly
 		// spaced — so it is worth finding once and then reusing.
-		this.search = 5;
+		this.search = 8;
 		this.offset = null;
 
 		// Appearances kept per crew type. The ship's own row draws its tiles
@@ -769,8 +769,13 @@ export default class RosterScanner
 			type: entry.type,
 			level: entry.level,
 			tile: entry.tile,
+			certain: entry.certain,
 			matched: false,
 		}));
+
+		// Types the voyage has no use for at all, whatever the level
+		let asked = {};
+		remaining.forEach(pick => { asked[pick.type] = true; });
 
 		// Each crew member already aboard settles one of the picks. A level we
 		// know has to match exactly — a Brimhaven Pirate at level 4 does not
@@ -803,8 +808,16 @@ export default class RosterScanner
 		});
 
 		// Anyone aboard that the voyage has no use for is holding a slot it
-		// needs. Only ones we are sure about: an unnamed tile is not evidence.
-		let spares = aboard.filter(entry => !entry.matched && entry.level && entry.tile);
+		// needs.
+		//
+		// Requiring a level here meant nothing was ever flagged when the level
+		// would not read — including a Travelling Drunk sitting on a ship whose
+		// voyage never asked for one. A crew member hovered is known outright,
+		// and a type no pick mentions is surplus whatever its level. What is
+		// still not claimed is a tile named only by its portrait, where being
+		// wrong would have you take off somebody you need.
+		let spares = aboard.filter(entry => entry.tile && !entry.matched
+			&& (entry.certain || !asked[entry.type]));
 
 		// Levels wanted per type, not just a count. A portrait cannot separate
 		// four Travelling Drunks, but the game prints each one's level on its
@@ -917,7 +930,11 @@ export default class RosterScanner
 				// — and the crew member you had only just put aboard went on
 				// being asked for.
 				if(seen && (!tile.type || seen.type === tile.type)){
-					return seen.type === 'Empty' ? null : {type: seen.type, level: seen.level, tile: tile};
+					// Hovered, so this is who it is whether or not the level
+					// came through with it
+					return seen.type === 'Empty'
+						? null
+						: {type: seen.type, level: seen.level, tile: tile, certain: true};
 				}
 
 				if(!tile.type || tile.type === 'Empty'){return null;}

@@ -308,17 +308,20 @@
 						`RosterSweep  read ${this.portraits.length}  agreed ${this.agreed}  disagreed ${this.disagreed}`
 							+ `  captured ${this.captured}  art offset ${offset.x},${offset.y}`
 							+ `  compare offset ${this.reader.compareOffset}`,
-						'tile   panel                     portrait                  dist  runnerUp',
+						'tile   panel                     portrait               lvl        stats  dist  runnerUp',
 					];
 
 					this.portraits.forEach(p => {
 						lines.push(
 							p.tile.padEnd(6)
 							+ String(p.panel).padEnd(26)
-							+ String(p.portrait).padEnd(26)
-							+ String(p.distance).padStart(5)
+							+ String(p.portrait).padEnd(22)
+							+ String(p.level).padStart(4)
+							+ String(p.stats).padStart(13)
+							+ String(p.distance).padStart(6)
 							+ String(p.runnerUp).padStart(10)
 							+ (p.panel === p.portrait ? '' : '   <- disagreed')
+							+ (p.level ? '' : '   <- no level')
 						);
 					});
 
@@ -458,6 +461,8 @@
 					tile: `${tile.column},${tile.row}`,
 					panel: name,
 					portrait: nearest.name,
+					level: result.level,
+					stats: `${result.morale}/${result.combat}/${result.seafaring}/${result.speed}`,
 					distance: Math.round(nearest.distance * 10) / 10,
 					runnerUp: Math.round(nearest.runnerUp * 10) / 10,
 				});
