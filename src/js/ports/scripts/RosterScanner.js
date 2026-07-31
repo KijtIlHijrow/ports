@@ -793,6 +793,21 @@ export default class RosterScanner
 			entry.matched = true;
 		});
 
+		// A pick with no level recorded cannot be matched exactly by anybody, so
+		// the type is all there is to go on for it too. Without this, a crew
+		// member aboard whose level *is* known matched nothing and was declared
+		// surplus — telling you to take off the First Mate the voyage wanted.
+		aboard.forEach(entry => {
+			if(entry.matched){return;}
+
+			let at = remaining.findIndex(pick => pick.type === entry.type && !pick.level);
+
+			if(at === -1){return;}
+
+			remaining.splice(at, 1);
+			entry.matched = true;
+		});
+
 		// Without a level, all that is known is that one of this type is aboard.
 		// It cannot be called surplus, and it cannot be matched to a particular
 		// pick either — choosing one would send you hunting for a crew member

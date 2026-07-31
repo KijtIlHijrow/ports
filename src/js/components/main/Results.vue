@@ -70,6 +70,7 @@
 				onShip: {},
 				hovering: null,
 				pending: null,
+				agreeing: 0,
 				layout: '',
 
 				// What the voyage is after, and the last few things hovering
@@ -119,6 +120,7 @@
 				this.onShip = {};
 				this.hovering = null;
 				this.pending = null;
+				this.agreeing = 0;
 				this.layout = '';
 				this.notes = [];
 				this.warned = false;
@@ -260,8 +262,17 @@
 
 				if(settled !== this.pending){
 					this.pending = settled;
+					this.agreeing = 1;
 					return;
 				}
+
+				this.agreeing++;
+
+				// Two agreeing reads was not enough. The panel can lag the mouse
+				// by longer than that, and a stale reading holds still while it
+				// does — which is how a tile holding a First Mate was recorded
+				// as an empty slot, twice running, and then learned as one.
+				if(this.agreeing < 3){return;}
 
 				// Noted for releaseHover, which captures it once the mouse has
 				// moved off and taken the hover glow with it
@@ -345,7 +356,11 @@
 
 				let signature = scanner.signature(buffer, last.column, last.row, tile);
 
-				if(signature && scanner.remember(last.type, signature)){
+				// An empty slot is bundled art and never needs learning, and it
+				// is the reading a lagging panel is most likely to still be
+				// showing — so learning it here can only ever teach a crew
+				// member's face as an empty slot.
+				if(last.type !== 'Empty' && signature && scanner.remember(last.type, signature)){
 					this.note(`learned what a ${last.type} looks like at ${last.column},${last.row}`);
 				}
 

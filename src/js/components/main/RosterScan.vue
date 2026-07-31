@@ -9,6 +9,10 @@
 				Read roster
 			</button>
 
+			<button class="text-white border border-white p-1 ml-2" @click.prevent="forget" v-if="!sweeping">
+				Forget portraits
+			</button>
+
 			<span class="ml-3 opacity-75">{{ status }}</span>
 		</div>
 
@@ -67,6 +71,27 @@
 		},
 
 		methods: {
+			/**
+			 * Throw away everything learned from this client
+			 *
+			 * A reading credited to the wrong tile teaches a crew member's face
+			 * as something else, and nothing afterwards can tell that it did.
+			 * Starting again from the bundled art is the only way back.
+			 *
+			 * @return {void}
+			 */
+			forget(){
+				let scanner = rosterScanner();
+
+				scanner.forget();
+
+				try {
+					localStorage.removeItem(scanner.badgeKey);
+				} catch(e) {}
+
+				this.read = 'Forgotten — sweep the roster to learn it again';
+			},
+
 			toggle(){
 				window.events.$emit(this.sweeping ? 'roster-sweep-stop' : 'roster-sweep-start');
 			},
