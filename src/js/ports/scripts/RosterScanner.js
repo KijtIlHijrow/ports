@@ -613,44 +613,71 @@ export default class RosterScanner
 	find(scan, picks, crewed){
 		if(!scan){return {found: false, reason: 'interface'};}
 
+		let remaining = (picks || [])
+			.filter(pick => pick && pick.type && pick.type !== 'Empty')
+			.map(pick => ({type: pick.type, level: pick.level}));
+
+		let aboard = (crewed || []).map(entry => ({
+			type: entry.type,
+			level: entry.level,
+			tile: entry.tile,
+			matched: false,
+		}));
+
+		// Each crew member already aboard settles one of the picks. A level we
+		// know has to match exactly — a Brimhaven Pirate at level 4 does not
+		// satisfy a voyage asking for one at level 5, it is simply occupying the
+		// slot that one needs.
+		aboard.forEach(entry => {
+			if(!entry.level){return;}
+
+			let at = remaining.findIndex(pick => pick.type === entry.type
+				&& Number(pick.level) === Number(entry.level));
+
+			if(at === -1){return;}
+
+			remaining.splice(at, 1);
+			entry.matched = true;
+		});
+
+		// Without a level, all that is known is that one of this type is aboard.
+		// It cannot be called surplus, and it cannot be matched to a particular
+		// pick either — choosing one would send you hunting for a crew member
+		// already on the ship.
+		let covered = {};
+
+		aboard.forEach(entry => {
+			if(entry.matched || entry.level){return;}
+			if(!remaining.some(pick => pick.type === entry.type)){return;}
+
+			covered[entry.type] = (covered[entry.type] || 0) + 1;
+			entry.matched = true;
+		});
+
+		// Anyone aboard that the voyage has no use for is holding a slot it
+		// needs. Only ones we are sure about: an unnamed tile is not evidence.
+		let spares = aboard.filter(entry => !entry.matched && entry.level && entry.tile);
+
 		// Levels wanted per type, not just a count. A portrait cannot separate
 		// four Travelling Drunks, but the game prints each one's level on its
 		// tile, so saying which level to look for turns a guess into a glance.
 		let wanted = {};
 
-		picks.forEach(pick => {
-			let name = pick && pick.type;
+		remaining.forEach(pick => {
+			wanted[pick.type] = wanted[pick.type] || {count: 0, levels: []};
+			wanted[pick.type].count++;
 
-			if(!name || name === 'Empty'){return;}
-
-			wanted[name] = wanted[name] || {count: 0, levels: []};
-			wanted[name].count++;
-
-			if(pick.level){wanted[name].levels.push(pick.level);}
+			if(pick.level){wanted[pick.type].levels.push(pick.level);}
 		});
 
-		// Anything already aboard is one fewer to go and find.
-		//
-		// A portrait can say a Travelling Drunk is aboard but never which one,
-		// so by default only the count comes down and every level stays on the
-		// list — striking an arbitrary one off sent you hunting for a crew
-		// member already on the ship and ruled out the tile holding the one you
-		// still needed. Hovering the ship's row says exactly who is up there,
-		// and then the right level can come off.
-		(crewed || []).forEach(entry => {
-			let name = entry && entry.type;
+		// One fewer of that type to go and find, but every level stays on the
+		// list, since which of them is aboard is exactly what is not known
+		Object.keys(covered).forEach(type => {
+			if(!wanted[type]){return;}
 
-			if(!name || !wanted[name]){return;}
+			wanted[type].count -= covered[type];
 
-			wanted[name].count--;
-
-			if(entry.level){
-				let at = wanted[name].levels.indexOf(entry.level);
-
-				if(at !== -1){wanted[name].levels.splice(at, 1);}
-			}
-
-			if(wanted[name].count <= 0){delete wanted[name];}
+			if(wanted[type].count <= 0){delete wanted[type];}
 		});
 
 		let holding = {};
@@ -691,6 +718,7 @@ export default class RosterScanner
 			found: true,
 			scan: scan,
 			marks: marks,
+			spares: spares,
 			missing: missing,
 			unknown: unknown,
 		};
@@ -723,12 +751,12 @@ export default class RosterScanner
 				// — and the crew member you had only just put aboard went on
 				// being asked for.
 				if(seen && (!tile.type || seen.type === tile.type)){
-					return seen.type === 'Empty' ? null : {type: seen.type, level: seen.level};
+					return seen.type === 'Empty' ? null : {type: seen.type, level: seen.level, tile: tile};
 				}
 
 				if(!tile.type || tile.type === 'Empty'){return null;}
 
-				return {type: tile.type, level: null};
+				return {type: tile.type, level: null, tile: tile};
 			})
 			.filter(entry => entry);
 	}
@@ -772,12 +800,26 @@ export default class RosterScanner
 	 * @param  {int} seconds
 	 * @return {void}
 	 */
-	show(marks, seconds = 0.7){
+	show(marks, seconds = 0.7, spares){
 		if(!window.alt1 || !alt1.overLayRect){return;}
 
 		let green = a1lib.mixcolor(80, 255, 80);
 		let amber = a1lib.mixcolor(255, 190, 60);
 		let red = a1lib.mixcolor(255, 80, 80);
+		let blue = a1lib.mixcolor(120, 190, 255);
+
+		// Crew aboard that this voyage has no use for. Without these the boxes
+		// can ask for two more crew members when the ship has one slot left,
+		// which is arithmetic nobody can act on.
+		(spares || []).forEach(spare => {
+			let tile = spare.tile;
+
+			alt1.overLayRect(blue, tile.x + 1, tile.y + 1, tile.size - 2, tile.size - 2, seconds * 1000, 2);
+
+			if(!alt1.overLayTextEx){return;}
+
+			alt1.overLayTextEx('take off', blue, 10, tile.x + 2, tile.y - 10, seconds * 1000, null, false, true);
+		});
 
 		marks.forEach(mark => {
 			let tile = mark.tile;

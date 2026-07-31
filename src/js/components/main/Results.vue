@@ -69,6 +69,7 @@
 				confirmed: {},
 				onShip: {},
 				hovering: null,
+				pending: null,
 				layout: '',
 
 				// What the voyage is after, and the last few things hovering
@@ -116,6 +117,7 @@
 				this.confirmed = {};
 				this.onShip = {};
 				this.hovering = null;
+				this.pending = null;
 				this.layout = '';
 				this.notes = [];
 
@@ -134,7 +136,7 @@
 					if(!this.finding){return;}
 
 					this.point();
-					this.timer = setInterval(this.point, 400);
+					this.timer = setInterval(this.point, 250);
 				});
 			},
 
@@ -194,12 +196,12 @@
 					mark.verdict = this.confirmed[`${mark.tile.column},${mark.tile.row}`];
 				});
 
-				if(!found.marks.length && !found.missing.length){
+				if(!found.marks.length && !found.missing.length && !found.spares.length){
 					this.message = 'All aboard — nothing left to click';
 					return this.stopFinding();
 				}
 
-				scanner.show(found.marks);
+				scanner.show(found.marks, 0.7, found.spares);
 
 				this.message = this.summarise(found);
 			},
@@ -246,6 +248,18 @@
 				let result = reader.result;
 
 				if(!result.type.found || !result.type.name || result.type.name === 'captain'){return;}
+
+				// The panel lags the mouse, so a reading taken mid-move belongs
+				// to the tile just left rather than the one arrived at. Without
+				// this the same ship tile reported a Brimhaven Pirate one moment
+				// and an empty slot the next, and the count of who was aboard
+				// flapped with it.
+				let settled = `${key}:${result.type.name}:${result.level}`;
+
+				if(settled !== this.pending){
+					this.pending = settled;
+					return;
+				}
 
 				// Noted for releaseHover, which captures it once the mouse has
 				// moved off and taken the hover glow with it
@@ -384,7 +398,12 @@
 				// room for.
 				let room = found.room;
 
-				if(room && found.marks.length > room.free){
+				if(found.spares.length){
+					notes.push(`${found.spares.length} aboard the voyage does not want`
+						+ ` (${found.spares.map(s => `${s.type} lvl ${s.level}`).join(', ')}) — take them off`);
+				}
+
+				if(room && found.marks.length > room.free && !found.spares.length){
 					notes.push(`${room.free === 0 ? 'no' : room.free} slot${room.free === 1 ? '' : 's'} free on the ship`
 						+ (room.unknown ? `, and ${room.unknown} aboard not recognised — hover the ship's row` : ''));
 				}
