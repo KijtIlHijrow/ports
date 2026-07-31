@@ -1,4 +1,5 @@
 import _ from 'lodash';
+import build from './build';
 
 // Configure Vue
 window.Vue = require('vue');
@@ -63,6 +64,10 @@ const app = new Vue({
 
     data(){
     	return {
+            // Which build is running. Two rounds of debugging went into
+            // symptoms that were only ever a stale bundle in Alt1's cache.
+            build: build,
+
             // Error message
             error: '',
 

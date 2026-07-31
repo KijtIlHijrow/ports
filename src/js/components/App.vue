@@ -5,6 +5,7 @@
 			<button class="py-1 px-4 text-white" :class="{'border-b border-white' : screen == 'ships'}" @click.prevent="screen = 'ships';">Ships</button>
 			<button class="py-1 px-4 text-white" :class="{'border-b border-white' : screen == 'ports'}" @click.prevent="screen = 'ports';">Ports</button>
 			<button class="py-1 px-4 text-white" :class="{'border-b border-white' : screen == 'settings'}" @click.prevent="screen = 'settings';">Settings</button>
+			<span class="text-white text-xs opacity-50 float-right pt-2 pr-2">{{ $root.build }}</span>
 		</nav>		
 
 		<div class="mt-2 h-8 flex items-center justify-center">
