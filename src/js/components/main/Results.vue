@@ -120,7 +120,7 @@
 			point(){
 				let picks = this.$root.result.crew
 					.filter(member => member.type && member.type.name && member.type.name !== 'Empty')
-					.map(member => member.type.name);
+					.map(member => ({type: member.type.name, level: member.level}));
 
 				if(!picks.length){
 					this.message = 'Nothing to find';
@@ -179,7 +179,13 @@
 				}
 
 				if(unsure){
-					notes.push(`${unsure} amber (more of that type than needed)`);
+					let levels = found.marks
+						.filter(mark => !mark.certain)
+						.reduce((all, mark) => all.concat(mark.levels), [])
+						.filter((level, i, all) => level && all.indexOf(level) === i);
+
+					notes.push(`${unsure} amber — check the level on the tile`
+						+ (levels.length ? ` (want ${levels.sort().join(', ')})` : ''));
 				}
 
 				if(found.missing.length){

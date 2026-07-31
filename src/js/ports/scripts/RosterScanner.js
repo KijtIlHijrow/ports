@@ -586,7 +586,7 @@ export default class RosterScanner
 	 * are going.
 	 *
 	 * @param  {object} scan   from scan(), passed in so a pass captures once
-	 * @param  {array} picks  crew type names the calculator chose
+	 * @param  {array} picks  the crew the calculator chose, {type, level}
 	 * @param  {array} crewed types already sitting in the ship's row, which
 	 *                        are picks that no longer need clicking
 	 * @return {object}
@@ -594,17 +594,27 @@ export default class RosterScanner
 	find(scan, picks, crewed){
 		if(!scan){return {found: false, reason: 'interface'};}
 
+		// Levels wanted per type, not just a count. A portrait cannot separate
+		// four Travelling Drunks, but the game prints each one's level on its
+		// tile, so saying which level to look for turns a guess into a glance.
 		let wanted = {};
 
-		picks.forEach(name => {
+		picks.forEach(pick => {
+			let name = pick && pick.type;
+
 			if(!name || name === 'Empty'){return;}
-			wanted[name] = (wanted[name] || 0) + 1;
+
+			wanted[name] = wanted[name] || [];
+			wanted[name].push(pick.level);
 		});
 
 		// Anything already aboard is one fewer to go and find
 		(crewed || []).forEach(name => {
-			if(wanted[name]){wanted[name]--;}
-			if(!wanted[name]){delete wanted[name];}
+			if(!wanted[name]){return;}
+
+			wanted[name].shift();
+
+			if(!wanted[name].length){delete wanted[name];}
 		});
 
 		let holding = {};
@@ -628,9 +638,17 @@ export default class RosterScanner
 
 			// Only as many tiles as the voyage needs means each one is going,
 			// so there is nothing left to be unsure about
-			let certain = tiles.length <= wanted[name];
+			let certain = tiles.length <= wanted[name].length;
 
-			tiles.forEach(tile => marks.push({tile: tile, type: name, certain: certain}));
+			// Which levels to look for, when the portrait alone cannot say
+			let levels = certain ? [] : wanted[name].filter(level => level).sort();
+
+			tiles.forEach(tile => marks.push({
+				tile: tile,
+				type: name,
+				certain: certain,
+				levels: levels,
+			}));
 		});
 
 		return {
@@ -673,6 +691,21 @@ export default class RosterScanner
 				tile.x + 1, tile.y + 1,
 				tile.size - 2, tile.size - 2,
 				seconds * 1000, 2
+			);
+
+			// An amber box says "one of these", which on its own leaves you
+			// opening crew members to find out. The game prints the level on
+			// every tile, so printing the level wanted beside the box is the
+			// difference between checking four and reading one.
+			if(mark.certain || !mark.levels.length){return;}
+			if(!alt1.overLayTextEx){return;}
+
+			alt1.overLayTextEx(
+				'want ' + mark.levels.join(' or '),
+				amber, 10,
+				tile.x + 2, tile.y - 10,
+				seconds * 1000,
+				null, false, true
 			);
 		});
 	}
