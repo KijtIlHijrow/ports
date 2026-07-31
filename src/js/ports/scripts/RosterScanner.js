@@ -915,6 +915,11 @@ export default class RosterScanner
 			spares: spares,
 			missing: missing,
 			unknown: unknown,
+
+			// How the decision was reached, for the report
+			aboard: aboard,
+			wanted: wanted,
+			remaining: remaining,
 		};
 	}
 

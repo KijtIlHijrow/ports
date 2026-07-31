@@ -71,6 +71,7 @@
 				hovering: null,
 				pending: null,
 				agreeing: 0,
+				lastReport: '',
 				layout: '',
 
 				// What the voyage is after, and the last few things hovering
@@ -121,6 +122,7 @@
 				this.hovering = null;
 				this.pending = null;
 				this.agreeing = 0;
+				this.lastReport = '';
 				this.layout = '';
 				this.notes = [];
 				this.warned = false;
@@ -206,6 +208,8 @@
 				}
 
 				scanner.show(found.marks, 0.7, found.spares);
+
+				this.report(scan, found);
 
 				this.message = this.summarise(found);
 			},
@@ -371,6 +375,73 @@
 				if(scanner.rememberBadge(last.type, last.level, corner)){
 					this.note(`learned the level ${last.level} badge for a ${last.type}`);
 				}
+			},
+
+			/**
+			 * Print the whole decision, once, whenever it changes
+			 *
+			 * Every round of this has been spent inferring which half was wrong
+			 * from a count of green boxes. The counts are downstream of three
+			 * things — who the ship's row holds, which picks that satisfies, and
+			 * what is left to find — and none of them were visible.
+			 *
+			 * @param  {object} scan
+			 * @param  {object} found
+			 * @return {void}
+			 */
+			report(scan, found){
+				let lines = ['Pointing report'];
+
+				lines.push('  ship row:');
+
+				scan.tiles.filter(tile => tile.row === 1).forEach(tile => {
+					let key = `${tile.column},${tile.row}`;
+					let seen = this.onShip[key];
+					let entry = (found.aboard || []).find(a => a.tile
+						&& a.tile.column === tile.column && a.tile.row === tile.row);
+
+					lines.push(`    ${key}  portrait ${(tile.type || '(unrecognised)').padEnd(22)}`
+						+ ` hovered ${(seen ? `${seen.type} lvl ${seen.level}` : '-').padEnd(28)}`
+						+ ` ${entry ? (entry.matched ? 'counts against a pick' : 'SURPLUS') : 'not counted aboard'}`);
+				});
+
+				lines.push('  picks still wanted after that:');
+
+				let wanted = found.wanted || {};
+
+				if(!Object.keys(wanted).length){
+					lines.push('    (none)');
+				} else {
+					Object.keys(wanted).forEach(name => {
+						lines.push(`    ${name} x${wanted[name].count}`
+							+ (wanted[name].levels.length ? `  levels ${wanted[name].levels.join(', ')}` : '  (no level recorded)'));
+					});
+				}
+
+				lines.push('  roster tiles boxed:');
+
+				if(!found.marks.length){
+					lines.push('    (none)');
+				} else {
+					found.marks.forEach(mark => {
+						lines.push(`    ${mark.tile.column},${mark.tile.row}  ${mark.type.padEnd(22)}`
+							+ ` tile level ${String(mark.tile.level || '-').padEnd(4)}`
+							+ ` ${mark.certain ? 'green' : (mark.verdict === true ? 'green (hovered)' : mark.verdict === false ? 'red (hovered)' : 'amber')}`
+							+ (mark.levels.length ? `  wants ${mark.levels.join(' or ')}` : ''));
+					});
+				}
+
+				if(found.spares.length){
+					lines.push('  aboard but not wanted:');
+					found.spares.forEach(s => lines.push(`    ${s.tile.column},${s.tile.row}  ${s.type} lvl ${s.level || '-'}`));
+				}
+
+				let text = lines.join('\n');
+
+				if(text === this.lastReport){return;}
+
+				this.lastReport = text;
+				console.log(text);
 			},
 
 			/**
