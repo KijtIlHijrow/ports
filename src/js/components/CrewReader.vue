@@ -36,7 +36,12 @@
 				// the only way to check the scanner against the real client
 				agreed: 0,
 				disagreed: 0,
+				captured: 0,
 				portraits: [],
+
+				// The tile confirmed just before this one, which the mouse has
+				// since left
+				previous: null,
 			}
 		},
 
@@ -76,8 +81,13 @@
 				// crew type, so the warning is checked further down, once we
 				// know which of the two we are looking at.
 
-				// If there's a selected crew member, edit their stats instead
+				// If there's a selected crew member, edit their stats instead.
+				// Worth saying out loud: a box left selected in the app grid
+				// sends the read there whatever the mouse is over, which looks
+				// exactly like the reader picking the wrong tile.
 				if(this.$root.selected){
+					console.log(`Alt1Read  writing to the box selected in the app (id ${this.$root.selected.id}), not the tile under the mouse`);
+
 					let selected = this.$root.selected;
 					let crew = null;
 
@@ -109,6 +119,14 @@
 				}
 
 				let tile = this.tileUnderMouse(result);
+				let mouse = a1lib.mousePosition();
+
+				console.log(
+					`Alt1Read  mouse ${mouse.x},${mouse.y}  grid ${result.foundX},${result.foundY}`
+					+ `  tile ${result.tile}  ->  column ${tile ? tile.column : '-'} row ${tile ? tile.row : '-'}`
+					+ `  slot ${tile ? RosterScanner.slotAt(tile.column, tile.row) : '-'}`
+					+ `  read "${result.type.name || ''}" ${result.morale}/${result.combat}/${result.seafaring}/${result.speed} lvl ${result.level}`
+				);
 
 				if(!tile){
 					return;
@@ -273,13 +291,30 @@
 
 			stopSweeping(){
 				if(this.sweeping && this.portraits.length){
-					console.log('RosterSweep', {
-						agreed: this.agreed,
-						disagreed: this.disagreed,
-						offset: this.scanner.offset,
-						compareOffset: this.reader.compareOffset,
-						seen: this.portraits,
+					// One flat string rather than an object. A console object has
+					// to be expanded branch by branch before it can be read or
+					// copied, and half of it comes out as unevaluated getters.
+					let offset = this.scanner.offset || {x: 0, y: 0};
+
+					let lines = [
+						`RosterSweep  read ${this.portraits.length}  agreed ${this.agreed}  disagreed ${this.disagreed}`
+							+ `  captured ${this.captured}  art offset ${offset.x},${offset.y}`
+							+ `  compare offset ${this.reader.compareOffset}`,
+						'tile   panel                     portrait                  dist  runnerUp',
+					];
+
+					this.portraits.forEach(p => {
+						lines.push(
+							p.tile.padEnd(6)
+							+ String(p.panel).padEnd(26)
+							+ String(p.portrait).padEnd(26)
+							+ String(p.distance).padStart(5)
+							+ String(p.runnerUp).padStart(10)
+							+ (p.panel === p.portrait ? '' : '   <- disagreed')
+						);
 					});
+
+					console.log(lines.join('\n'));
 				}
 
 				this.sweeping = false;
@@ -372,6 +407,23 @@
 					distance: Math.round(nearest.distance * 10) / 10,
 					runnerUp: Math.round(nearest.runnerUp * 10) / 10,
 				});
+
+				// The tile read a moment ago is no longer under the mouse, so it
+				// is the same crew member without the hover glow: this is the one
+				// moment a portrait can be captured from this client and named
+				// with certainty. Hovering does not reorder the roster, so unlike
+				// the version that clicked, that tile is still who it was.
+				//
+				// It matters because the bundled art lands about twelve units
+				// from what the client actually draws, which is close enough to
+				// rank correctly and too far to clear the margin.
+				if(this.previous && (this.previous.column !== tile.column || this.previous.row !== tile.row)){
+					let plain = this.scanner.signature(buffer, this.previous.column, this.previous.row, result.tile);
+
+					if(plain && this.scanner.remember(this.previous.name, plain)){this.captured++;}
+				}
+
+				this.previous = {column: tile.column, row: tile.row, name: name};
 			},
 
 			/**

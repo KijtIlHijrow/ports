@@ -536,6 +536,10 @@ export default class RosterScanner
 				let signature = this.signature(buffer, column, row, tile);
 				let match = signature ? this.identify(signature, known) : null;
 
+				// What the tile looked like regardless of whether it cleared the
+				// gates, so a scan that names nothing can still say why
+				let near = signature ? this.nearest(signature, known) : null;
+
 				tiles.push({
 					slot: RosterScanner.slotAt(column, row),
 					column: column,
@@ -545,6 +549,9 @@ export default class RosterScanner
 					size: tile,
 					type: match ? match.name : '',
 					distance: match ? match.distance : null,
+					nearest: near ? near.name : '',
+					nearestDistance: near ? near.distance : null,
+					runnerUp: near ? near.runnerUp : null,
 				});
 			}
 		}
@@ -634,7 +641,7 @@ export default class RosterScanner
 	 * @param  {int} seconds
 	 * @return {void}
 	 */
-	show(marks, seconds = 2){
+	show(marks, seconds = 0.7){
 		if(!window.alt1 || !alt1.overLayRect){return;}
 
 		let green = a1lib.mixcolor(80, 255, 80);

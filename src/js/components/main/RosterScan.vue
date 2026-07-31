@@ -82,21 +82,40 @@
 
 					let scan = rosterScanner().scan(owned.filter((n, i) => owned.indexOf(n) === i));
 
-					console.log('RosterRead', scan);
-
 					if(!scan){
 						return this.read = 'Open the ship\'s crew interface first';
 					}
 
+					// Flat text, because a console object has to be expanded
+					// branch by branch before any of it can be read or copied
+					let offset = scan.offset || {x: 0, y: 0};
 					let named = scan.tiles.filter(tile => tile.type);
 
+					let lines = [
+						`RosterRead  ${named.length} of ${scan.tiles.length} named  art offset ${offset.x},${offset.y}`,
+						'tile   named                     nearest                   dist  runnerUp',
+					];
+
+					scan.tiles.forEach(t => {
+						lines.push(
+							`${t.column},${t.row}`.padEnd(6)
+							+ (t.type || '-').padEnd(26)
+							+ (t.nearest || '-').padEnd(26)
+							+ (t.nearestDistance === null ? '' : t.nearestDistance.toFixed(1)).padStart(5)
+							+ (t.runnerUp === null || t.runnerUp === Infinity ? '' : t.runnerUp.toFixed(1)).padStart(10)
+							+ (t.type ? '' : '   <- declined')
+						);
+					});
+
+					console.log(lines.join('\n'));
+
 					if(!named.length){
-						return this.read = 'No tiles recognised';
+						return this.read = 'Nothing cleared the thresholds — see the console';
 					}
 
 					let worst = named.reduce((far, tile) => Math.max(far, tile.distance), 0);
 
-					this.read = `${named.length} of 25 recognised, worst match ${worst.toFixed(1)}`;
+					this.read = `${named.length} of ${scan.tiles.length} recognised, worst match ${worst.toFixed(1)}`;
 				});
 			},
 		}
