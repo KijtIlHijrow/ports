@@ -10,7 +10,7 @@
 			</button>
 
 			<button class="text-white border border-white p-1 ml-2" @click.prevent="forget" v-if="!sweeping">
-				Forget portraits
+				Forget learning
 			</button>
 
 			<span class="ml-3 opacity-75">{{ status }}</span>
@@ -83,13 +83,22 @@
 			forget(){
 				let scanner = rosterScanner();
 
+				// Say what went, and say what did not. The crew grid below is
+				// the roster — who you own and what their stats are — and this
+				// never touches it. Only what the scanner worked out about how
+				// this client draws them is thrown away.
+				let portraits = Object.keys(scanner.library()).length;
+				let badges = Object.keys(scanner.badges()).length;
+
 				scanner.forget();
 
 				try {
 					localStorage.removeItem(scanner.badgeKey);
 				} catch(e) {}
 
-				this.read = 'Forgotten — sweep the roster to learn it again';
+				this.read = `Forgot ${portraits} learned portrait${portraits === 1 ? '' : 's'}`
+					+ ` and ${badges} level badge${badges === 1 ? '' : 's'}.`
+					+ ' Your roster is untouched — sweep to learn them again.';
 			},
 
 			toggle(){
