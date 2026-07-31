@@ -102,6 +102,16 @@
 				this.confirmed = {};
 				this.layout = '';
 
+				let picks = this.$root.result.crew
+					.filter(member => member.type && member.type.name)
+					.map(member => `${member.type.name} lvl ${member.level}`);
+
+				// What the voyage is actually asking for. If a level here does
+				// not match anything in the roster, the picks are describing
+				// crew as they were before the roster last moved — recalculating
+				// after a sweep is what puts that right.
+				console.log(`Pointing  looking for: ${picks.join(', ')}`);
+
 				rosterScanner().prepare().then(() => {
 					if(!this.finding){return;}
 
@@ -210,8 +220,16 @@
 
 				let level = Number(result.level);
 				let wanted = mark.levels.map(Number);
+				let verdict = wanted.indexOf(level) !== -1;
+				let key = `${where.column},${where.row}`;
 
-				this.confirmed[`${where.column},${where.row}`] = wanted.indexOf(level) !== -1;
+				if(this.confirmed[key] !== verdict){
+					console.log(`Pointing  ${key} is a ${mark.type} level ${result.level}`
+						+ `  wanted ${wanted.length ? wanted.join(' or ') : '(no level recorded)'}`
+						+ `  -> ${verdict ? 'this one' : 'not this one'}`);
+				}
+
+				this.confirmed[key] = verdict;
 			},
 
 			/**

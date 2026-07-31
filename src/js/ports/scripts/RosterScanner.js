@@ -623,17 +623,23 @@ export default class RosterScanner
 
 			if(!name || name === 'Empty'){return;}
 
-			wanted[name] = wanted[name] || [];
-			wanted[name].push(pick.level);
+			wanted[name] = wanted[name] || {count: 0, levels: []};
+			wanted[name].count++;
+
+			if(pick.level){wanted[name].levels.push(pick.level);}
 		});
 
-		// Anything already aboard is one fewer to go and find
+		// Anything already aboard is one fewer to go and find — but only one
+		// fewer. Which of them is aboard cannot be told from a portrait, so no
+		// level is struck off the list: taking an arbitrary one off sent you
+		// hunting for a crew member already on the ship, and ruled out the tile
+		// holding the one you actually still needed.
 		(crewed || []).forEach(name => {
 			if(!wanted[name]){return;}
 
-			wanted[name].shift();
+			wanted[name].count--;
 
-			if(!wanted[name].length){delete wanted[name];}
+			if(wanted[name].count <= 0){delete wanted[name];}
 		});
 
 		let holding = {};
@@ -657,10 +663,10 @@ export default class RosterScanner
 
 			// Only as many tiles as the voyage needs means each one is going,
 			// so there is nothing left to be unsure about
-			let certain = tiles.length <= wanted[name].length;
+			let certain = tiles.length <= wanted[name].count;
 
 			// Which levels to look for, when the portrait alone cannot say
-			let levels = certain ? [] : wanted[name].filter(level => level).sort();
+			let levels = certain ? [] : wanted[name].levels.slice().sort((a, b) => a - b);
 
 			tiles.forEach(tile => marks.push({
 				tile: tile,
