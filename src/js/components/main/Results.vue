@@ -45,7 +45,7 @@
 
 <script>
 	import RosterScanner from '../../ports/scripts/RosterScanner.js';
-	import { rosterScanner } from '../../ports/scripts/readers.js';
+	import { crewReader, rosterScanner } from '../../ports/scripts/readers.js';
 
 	export default {
 		data(){
@@ -57,6 +57,11 @@
 				finding: false,
 				timer: null,
 				message: '',
+
+				// Tiles settled by hovering them, and the roster layout those
+				// answers were true of
+				confirmed: {},
+				layout: '',
 			}
 		},
 
@@ -94,6 +99,8 @@
 
 				this.finding = true;
 				this.message = 'Reading the portraits…';
+				this.confirmed = {};
+				this.layout = '';
 
 				rosterScanner().prepare().then(() => {
 					if(!this.finding){return;}
@@ -134,7 +141,24 @@
 					return this.message = 'Open the ship\'s crew interface';
 				}
 
+				// Anything settled by hovering only holds while the roster
+				// stands still. Clicking a crew member onto the ship shuffles
+				// everyone behind them, and an answer about a tile is worthless
+				// once somebody else is in it.
+				let layout = scan.tiles.map(tile => tile.type || '?').join('|');
+
+				if(layout !== this.layout){
+					this.layout = layout;
+					this.confirmed = {};
+				}
+
 				let found = scanner.find(scan, picks, RosterScanner.aboard(scan));
+
+				this.askThePanel(scan, found);
+
+				found.marks.forEach(mark => {
+					mark.verdict = this.confirmed[`${mark.tile.column},${mark.tile.row}`];
+				});
 
 				if(!found.marks.length && !found.missing.length){
 					this.message = 'All aboard — nothing left to click';
@@ -144,6 +168,50 @@
 				scanner.show(found.marks);
 
 				this.message = this.summarise(found);
+			},
+
+			/**
+			 * Settle an ambiguous tile by hovering it
+			 *
+			 * A portrait names a crew type and nothing finer, so four
+			 * Travelling Drunks are four identical answers. The Compare block
+			 * has no such trouble — it knows exactly who the mouse is over,
+			 * level and all — so simply moving across the candidates turns each
+			 * one green or red as you reach it, with nothing to click and
+			 * nothing put on the ship by mistake.
+			 *
+			 * @param  {object} scan
+			 * @param  {object} found
+			 * @return {void}
+			 */
+			askThePanel(scan, found){
+				let reader = crewReader();
+				let tile = scan.location.skin.grid.tile;
+
+				let where = RosterScanner.tileAt(
+					scan.location.gridX, scan.location.gridY, tile, a1lib.mousePosition()
+				);
+
+				if(!where){return;}
+
+				let mark = found.marks.find(m => !m.certain
+					&& m.tile.column === where.column && m.tile.row === where.row);
+
+				if(!mark){return;}
+
+				// The scan has already found the interface this tick
+				if(!reader.read(scan.location)){return;}
+
+				let result = reader.result;
+
+				// The panel is showing something else, most likely because the
+				// mouse has moved on since. Better no answer than a wrong one.
+				if(!result.type.found || result.type.name !== mark.type){return;}
+
+				let level = Number(result.level);
+				let wanted = mark.levels.map(Number);
+
+				this.confirmed[`${where.column},${where.row}`] = wanted.indexOf(level) !== -1;
 			},
 
 			/**
@@ -179,13 +247,22 @@
 				}
 
 				if(unsure){
+					let settled = found.marks.filter(mark => mark.verdict === true).length;
+					let ruled = found.marks.filter(mark => mark.verdict === false).length;
+					let open = unsure - settled - ruled;
+
 					let levels = found.marks
-						.filter(mark => !mark.certain)
+						.filter(mark => !mark.certain && mark.verdict === undefined)
 						.reduce((all, mark) => all.concat(mark.levels), [])
 						.filter((level, i, all) => level && all.indexOf(level) === i);
 
-					notes.push(`${unsure} amber — check the level on the tile`
-						+ (levels.length ? ` (want ${levels.sort().join(', ')})` : ''));
+					if(open){
+						notes.push(`${open} to tell apart — hover them, or read the level`
+							+ (levels.length ? ` (want ${levels.sort().join(', ')})` : ''));
+					}
+
+					if(settled){notes.push(`${settled} confirmed by hovering`);}
+					if(ruled){notes.push(`${ruled} ruled out`);}
 				}
 
 				if(found.missing.length){

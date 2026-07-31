@@ -143,8 +143,13 @@ export default class CrewReader
 		return null;
 	}
 
-	read(){
-		let location = this.locate();
+	/**
+	 * @param  {object} known  a location already found this tick, so a caller
+	 *                         that has just scanned does not pay to find the
+	 *                         interface all over again
+	 */
+	read(known){
+		let location = known || this.locate();
 
 		if(!location){
 			this.result = null;

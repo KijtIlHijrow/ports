@@ -195,6 +195,25 @@ export default class RosterScanner
 	}
 
 	/**
+	 * Which tile a screen position falls on
+	 * @param  {int} gridX
+	 * @param  {int} gridY
+	 * @param  {int} tile
+	 * @param  {object} position  from a1lib.mousePosition()
+	 * @return {object|null}  1 based column and row
+	 */
+	static tileAt(gridX, gridY, tile, position){
+		if(!position || position.x < 0 || position.y < 0){return null;}
+
+		let column = Math.ceil((position.x - gridX) / tile);
+		let row = Math.ceil((position.y - gridY) / tile);
+
+		if(column < 1 || column > 6 || row < 1 || row > 5){return null;}
+
+		return {column: column, row: row};
+	}
+
+	/**
 	 * Grab the whole roster grid in one capture
 	 * @param  {int} gridX  screen position of the grid, from the reader
 	 * @param  {int} gridY
@@ -682,31 +701,39 @@ export default class RosterScanner
 
 		let green = a1lib.mixcolor(80, 255, 80);
 		let amber = a1lib.mixcolor(255, 190, 60);
+		let red = a1lib.mixcolor(255, 80, 80);
 
 		marks.forEach(mark => {
 			let tile = mark.tile;
 
+			// A verdict comes from hovering the tile and reading the panel,
+			// which knows exactly who is there — so it settles what a portrait
+			// never can, and outranks it.
+			let colour = amber, label = '';
+
+			if(mark.certain || mark.verdict === true){
+				colour = green;
+				label = mark.verdict === true ? 'this one' : '';
+			} else if(mark.verdict === false){
+				colour = red;
+				label = 'not this one';
+			} else if(mark.levels.length){
+				// The game prints the level on every tile, so saying which
+				// level is wanted is the difference between checking four crew
+				// members and reading one number
+				label = 'want ' + mark.levels.join(' or ');
+			}
+
 			alt1.overLayRect(
-				mark.certain ? green : amber,
+				colour,
 				tile.x + 1, tile.y + 1,
 				tile.size - 2, tile.size - 2,
 				seconds * 1000, 2
 			);
 
-			// An amber box says "one of these", which on its own leaves you
-			// opening crew members to find out. The game prints the level on
-			// every tile, so printing the level wanted beside the box is the
-			// difference between checking four and reading one.
-			if(mark.certain || !mark.levels.length){return;}
-			if(!alt1.overLayTextEx){return;}
+			if(!label || !alt1.overLayTextEx){return;}
 
-			alt1.overLayTextEx(
-				'want ' + mark.levels.join(' or '),
-				amber, 10,
-				tile.x + 2, tile.y - 10,
-				seconds * 1000,
-				null, false, true
-			);
+			alt1.overLayTextEx(label, colour, 10, tile.x + 2, tile.y - 10, seconds * 1000, null, false, true);
 		});
 	}
 }
