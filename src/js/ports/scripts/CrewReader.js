@@ -183,10 +183,10 @@ export default class CrewReader
 
 		this.result = {
 			type: block.type,
-			morale: block.stats.morale,
-			combat: block.stats.combat,
-			seafaring: block.stats.seafaring,
-			speed: block.stats.speed,
+			morale: block.stats.morale || 0,
+			combat: block.stats.combat || 0,
+			seafaring: block.stats.seafaring || 0,
+			speed: block.stats.speed || 0,
 			level: block.level || 0,
 			skin: skin.name,
 			tile: skin.grid.tile,
@@ -262,12 +262,17 @@ export default class CrewReader
 			: this.getStat(buffer, coordinates[name].x, coordinates[name].y);
 
 		// Read the stats first: they are what separates crew whose names the OCR
-		// cannot tell apart, so getType needs them
+		// cannot tell apart, so getType needs them.
+		//
+		// A stat that did not read stays empty rather than becoming a zero. The
+		// two mean opposite things to fitsStats — a zero is a claim about the
+		// crew member, an empty string is the absence of one — and collapsing
+		// them ruled out the right answer whenever a single value was missed.
 		let stats = {
-			morale: stat('morale') || 0,
-			combat: stat('combat') || 0,
-			seafaring: stat('seafaring') || 0,
-			speed: stat('speed') || 0,
+			morale: stat('morale'),
+			combat: stat('combat'),
+			seafaring: stat('seafaring'),
+			speed: stat('speed'),
 		};
 
 		let captain = this.isCaptain(blockImage);
@@ -553,6 +558,13 @@ export default class CrewReader
 	 * type out. This is the backstop on every route to an answer, including ones
 	 * the player confirmed, because a saved mapping can be wrong or stale.
 	 *
+	 * Only stats that actually read are evidence. A value the reader could not
+	 * make out says nothing about who this is, and counting it as a zero turns
+	 * one missed number into a veto over the right answer — which is what
+	 * happened to every crew member holding a stat exactly equal to the
+	 * selected one's, since the Compare block draws those in a colour the digit
+	 * reader used to skip.
+	 *
 	 * @param  {string} name
 	 * @param  {object} stats
 	 * @return {boolean}
@@ -563,18 +575,18 @@ export default class CrewReader
 		// Nothing to check against, so nothing to contradict
 		if(!base || !stats){return true;}
 
-		let read = {
-			morale: CrewReader.toNumber(stats.morale),
-			combat: CrewReader.toNumber(stats.combat),
-			seafaring: CrewReader.toNumber(stats.seafaring),
-			speed: CrewReader.toNumber(stats.speed),
-		};
+		let read = ['morale', 'combat', 'seafaring', 'speed'].filter(key => {
+			return stats[key] !== '' && stats[key] !== null && stats[key] !== undefined;
+		});
 
-		// If no stat read at all, the stats cannot judge anything
-		if(!read.morale && !read.combat && !read.seafaring && !read.speed){return true;}
+		// Nothing legible, so the stats cannot judge anything
+		if(!read.length){return true;}
 
-		return ['morale', 'combat', 'seafaring', 'speed'].every(key => {
-			return read[key] >= Math.floor(base[key] * 0.9);
+		// Neither can a row of zeroes, which is what an unread block looks like
+		if(read.every(key => !CrewReader.toNumber(stats[key]))){return true;}
+
+		return read.every(key => {
+			return CrewReader.toNumber(stats[key]) >= Math.floor(base[key] * 0.9);
 		});
 	}
 

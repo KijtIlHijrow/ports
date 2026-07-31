@@ -29,10 +29,15 @@ export default class DigitReader
 		this.saturation = 45;
 
 		// Except in the Compare block, which colours a value against the crew
-		// member you have selected — green for better, red for worse. Those two
-		// hues have to be allowed there, and only there.
+		// member you have selected — green for better, red for worse, and cream
+		// for the same. Those have to be allowed there, and only there.
 		this.colour = 120;
 		this.dim = 90;
+
+		// Cream is warm enough to fail the check above: it spreads 64 across its
+		// channels where white spreads none. Allowing that much still leaves the
+		// orange labels beside the values well outside, at 247.
+		this.warm = 80;
 	}
 
 	/**
@@ -50,7 +55,9 @@ export default class DigitReader
 		let i = (y * buffer.width + x) * 4;
 		let r = buffer.data[i], g = buffer.data[i + 1], b = buffer.data[i + 2];
 
-		if(Math.max(r, g, b) - Math.min(r, g, b) <= this.saturation){
+		// White, and in a Compare block cream too, which is what a stat is drawn
+		// in when it exactly equals the selected crew member's
+		if(Math.max(r, g, b) - Math.min(r, g, b) <= (comparison ? this.warm : this.saturation)){
 			return (r * 0.299 + g * 0.587 + b * 0.114) > this.threshold;
 		}
 
