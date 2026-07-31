@@ -42,6 +42,9 @@
 				// The tile confirmed just before this one, which the mouse has
 				// since left
 				previous: null,
+
+				// Tiles the panel would not name, and what the OCR saw there
+				missed: {},
 			}
 		},
 
@@ -273,7 +276,10 @@
 				this.swept = {};
 				this.agreed = 0;
 				this.disagreed = 0;
+				this.captured = 0;
+				this.previous = null;
 				this.portraits = [];
+				this.missed = {};
 
 				this.progress('Getting the portraits ready…');
 
@@ -314,6 +320,23 @@
 						);
 					});
 
+					let missed = Object.keys(this.missed);
+
+					if(missed.length){
+						lines.push('');
+						lines.push(`${missed.length} tiles the panel could not name. What the OCR saw:`);
+
+						missed.forEach(key => {
+							let m = this.missed[key];
+
+							lines.push(
+								`  ${m.tile.padEnd(6)} stats ${m.stats.padEnd(18)} lvl ${String(m.level).padEnd(4)}`
+								+ (m.captain ? ' read as a captain' : '')
+								+ (m.attempts.length ? ` saw: ${m.attempts.map(a => JSON.stringify(a)).join(' ')}` : ' saw: nothing at all')
+							);
+						});
+					}
+
 					console.log(lines.join('\n'));
 				}
 
@@ -344,8 +367,25 @@
 				}
 
 				if(!result.type.found || !result.type.name || result.type.name === 'captain'){
+					// Record why, once per tile. "Not recognised" on its own says
+					// nothing about whether the name failed to read at all or read
+					// and failed to match, and those want opposite fixes.
+					let key = `${tile.column},${tile.row}`;
+
+					if(!this.missed[key]){
+						this.missed[key] = {
+							tile: key,
+							attempts: (result.type.attempts || []).slice(0, 4),
+							stats: `${result.morale}/${result.combat}/${result.seafaring}/${result.speed}`,
+							level: result.level,
+							captain: result.type.name === 'captain',
+						};
+					}
+
 					return this.progress('That one was not recognised — set its type by hand');
 				}
+
+				delete this.missed[`${tile.column},${tile.row}`];
 
 				// The panel takes a frame or two to follow the mouse, so the
 				// same answer has to come back twice running before it can be
@@ -449,6 +489,7 @@
 					tiles: Object.keys(this.swept).length,
 					agreed: this.agreed,
 					disagreed: this.disagreed,
+					missed: Object.keys(this.missed).length,
 					message: message || '',
 				});
 			},

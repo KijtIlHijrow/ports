@@ -28,6 +28,7 @@
 				tiles: 0,
 				agreed: 0,
 				disagreed: 0,
+				missed: 0,
 				message: '',
 
 				read: '',
@@ -40,6 +41,7 @@
 				this.tiles = state.tiles;
 				this.agreed = state.agreed;
 				this.disagreed = state.disagreed;
+				this.missed = state.missed;
 				this.message = state.message;
 			});
 		},
@@ -47,12 +49,17 @@
 		computed: {
 			status(){
 				if(this.sweeping){
-					return this.message || `${this.tiles} of 25 read`
-						+ (this.disagreed ? `, ${this.disagreed} portraits disagreed` : '');
+					// The count always shows. It used to be replaced by whatever
+					// the last poll had to say, so a single tile that would not
+					// read looked exactly like a sweep reading nothing at all.
+					return `${this.tiles} of 25 read`
+						+ (this.missed ? `, ${this.missed} not recognised` : '')
+						+ (this.message ? ` — ${this.message}` : '');
 				}
 
 				if(this.tiles){
-					return `${this.tiles} read, portraits agreed on ${this.agreed} of ${this.agreed + this.disagreed}`;
+					return `${this.tiles} read, portraits agreed on ${this.agreed} of ${this.agreed + this.disagreed}`
+						+ (this.missed ? `, ${this.missed} unnamed (see console)` : '');
 				}
 
 				return this.read;

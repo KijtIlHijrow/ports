@@ -168,12 +168,17 @@ export default class CrewReader
 
 			block = this.readBlock(location, offset);
 
-			if(block){
-				// Where the block sits does not move between reads, so the
-				// search is worth paying for only once
-				this.compareOffset = offset;
-				break;
-			}
+			if(!block){continue;}
+
+			// Only an offset that produced a name is worth keeping. The name is
+			// far and away the most alignment-sensitive thing in the block —
+			// it is read at three exact baselines, where a stat gets a whole
+			// band and the level is read leniently — so a row or two out still
+			// yields numbers while the name silently disappears. Locking onto
+			// such an offset would leave every later read nameless.
+			if(block.type.found){this.compareOffset = offset;}
+
+			break;
 		}
 
 		if(!block){
@@ -287,7 +292,11 @@ export default class CrewReader
 
 		// Nothing is being hovered, or the block is not where we looked. Either
 		// way there is no reading here to report.
-		if(!type.found && !level && !stats.morale && !stats.combat && !stats.seafaring && !stats.speed){
+		//
+		// A level on its own does not count as a reading. It is the one value
+		// read leniently — whatever digits turn up, keep them — so it is the
+		// most likely thing to come back from a block that is not really there.
+		if(!type.found && !stats.morale && !stats.combat && !stats.seafaring && !stats.speed){
 			return null;
 		}
 
