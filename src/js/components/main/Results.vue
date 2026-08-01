@@ -426,7 +426,7 @@
 					found.marks.forEach(mark => {
 						lines.push(`    ${mark.tile.column},${mark.tile.row}  ${mark.type.padEnd(22)}`
 							+ ` tile level ${String(mark.tile.level || '-').padEnd(4)}`
-							+ ` ${mark.certain ? 'green' : (mark.verdict === true ? 'green (hovered)' : mark.verdict === false ? 'red (hovered)' : 'amber')}`
+							+ ` ${mark.certain ? 'green' : mark.interchangeable ? 'green (any of these)' : (mark.verdict === true ? 'green (hovered)' : mark.verdict === false ? 'red (hovered)' : 'amber')}`
 							+ (mark.levels.length ? `  wants ${mark.levels.join(' or ')}` : ''));
 					});
 				}
@@ -536,7 +536,10 @@
 				if(unsure){
 					let settled = found.marks.filter(mark => mark.verdict === true).length;
 					let ruled = found.marks.filter(mark => mark.verdict === false).length;
-					let open = unsure - settled - ruled;
+					let any = found.marks.filter(mark => mark.interchangeable).length;
+					let open = unsure - settled - ruled - any;
+
+					if(any){notes.push(`${any} green — same type and level, take any`);}
 
 					let levels = found.marks
 						.filter(mark => !mark.certain && mark.verdict === undefined)

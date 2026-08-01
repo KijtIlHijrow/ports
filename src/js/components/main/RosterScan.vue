@@ -133,7 +133,9 @@
 					let named = scan.tiles.filter(tile => tile.type);
 
 					let lines = [
-						`RosterRead  ${named.length} of ${scan.tiles.length} named  art offset ${offset.x},${offset.y}`,
+						`RosterRead  ${named.length} of ${scan.tiles.length} named  art offset ${offset.x},${offset.y}`
+							+ (scan.rowOffsets ? '  per row ' + Object.keys(scan.rowOffsets)
+								.map(r => `${r}:${scan.rowOffsets[r].x},${scan.rowOffsets[r].y}`).join(' ') : ''),
 						'tile   named                     nearest                lvl  dist  runnerUp',
 					];
 

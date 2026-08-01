@@ -87,6 +87,15 @@ export default class RosterScanner
 		this.search = 8;
 		this.offset = null;
 
+		// ...and then each row again on its own. The ship's row is drawn in its
+		// own container above the roster and does not sit on the same rhythm:
+		// with one offset for the whole grid its tiles landed 22 to 40 from
+		// every portrait, the runner up half a unit behind, which is another
+		// way of saying the signature had become noise. The roster rows below
+		// it were matching at 5 at the same moment.
+		this.rowSearch = 6;
+		this.rowOffsets = null;
+
 		// Appearances kept per crew type. The ship's own row draws its tiles
 		// differently enough to matter — the same Travelling Drunk measures 19
 		// there against 12 everywhere else — so a type needs room for both.
@@ -321,8 +330,19 @@ export default class RosterScanner
 	 * @param  {object} offset     where the art sits, once calibrated
 	 * @return {array|null}
 	 */
+	/**
+	 * Where the art sits in a given row
+	 * @param  {int} row
+	 * @return {object}
+	 */
+	offsetFor(row){
+		if(this.rowOffsets && this.rowOffsets[row]){return this.rowOffsets[row];}
+
+		return this.offset || {x: 0, y: 0};
+	}
+
 	signature(buffer, column, row, tile, offset){
-		let nudge = offset || this.offset || {x: 0, y: 0};
+		let nudge = offset || this.offsetFor(row);
 
 		let left = ((column - 1) * tile) + Math.round(tile * this.portrait.from) + nudge.x;
 		let top = ((row - 1) * tile) + Math.round(tile * this.portrait.from) + nudge.y;
@@ -378,6 +398,46 @@ export default class RosterScanner
 
 		this.offset = best ? {x: best.x, y: best.y} : {x: 0, y: 0};
 
+		// Now each row on its own, starting from what the grid as a whole
+		// settled on. Rows drawn on the same rhythm land back where they
+		// started; the ship's row does not, and this is the only way it ever
+		// gets read as well as the roster is.
+		this.rowOffsets = {};
+
+		for(let row = 1; row <= this.rows; row++){
+			let bestRow = null;
+
+			for(let dy = -this.rowSearch; dy <= this.rowSearch; dy++){
+				for(let dx = -this.rowSearch; dx <= this.rowSearch; dx++){
+					let nudge = {x: this.offset.x + dx, y: this.offset.y + dy};
+					let named = 0, total = 0;
+
+					for(let column = this.captainColumn + 1; column <= this.columns; column++){
+						let signature = this.signature(buffer, column, row, tile, nudge);
+
+						if(!signature){continue;}
+
+						let nearest = this.nearest(signature, known);
+
+						if(nearest.distance <= this.accept){
+							named++;
+							total += nearest.distance;
+						}
+					}
+
+					if(!named){continue;}
+
+					let mean = total / named;
+
+					if(!bestRow || named > bestRow.named || (named === bestRow.named && mean < bestRow.mean)){
+						bestRow = {named: named, mean: mean, x: nudge.x, y: nudge.y};
+					}
+				}
+			}
+
+			this.rowOffsets[row] = bestRow ? {x: bestRow.x, y: bestRow.y} : this.offset;
+		}
+
 		return this.offset;
 	}
 
@@ -403,7 +463,7 @@ export default class RosterScanner
 	 * @return {array|null}
 	 */
 	corner(buffer, column, row, tile){
-		let nudge = this.offset || {x: 0, y: 0};
+		let nudge = this.offsetFor(row);
 
 		let art = Math.round(tile * this.portrait.from);
 		let size = Math.round(tile * (this.portrait.to - this.portrait.from));
@@ -707,7 +767,7 @@ export default class RosterScanner
 
 		// Where the art sits in a tile is the same every time, so this is paid
 		// once rather than on every pass
-		if(!this.offset){this.calibrate(buffer, tile, known);}
+		if(!this.offset || !this.rowOffsets){this.calibrate(buffer, tile, known);}
 
 		let tiles = [];
 
@@ -741,7 +801,7 @@ export default class RosterScanner
 			}
 		}
 
-		return {location: location, tiles: tiles, offset: this.offset};
+		return {location: location, tiles: tiles, offset: this.offset, rowOffsets: this.rowOffsets};
 	}
 
 	/**
@@ -900,11 +960,20 @@ export default class RosterScanner
 			// Which levels to look for, when the portrait alone cannot say
 			let levels = certain ? [] : wanted[name].levels.slice().sort((a, b) => a - b);
 
+			// Every one of them holds a level the voyage wants and there are
+			// more than it needs, so they are the same crew member as far as
+			// this voyage is concerned. Saying "check the level" there sends
+			// you to compare two numbers that are equal.
+			let interchangeable = !certain && levels.length
+				&& tiles.every(tile => tile.level
+					&& levels.some(level => Number(level) === Number(tile.level)));
+
 			tiles.forEach(tile => marks.push({
 				tile: tile,
 				type: name,
 				certain: certain,
-				levels: levels,
+				interchangeable: !!interchangeable,
+				levels: interchangeable ? [] : levels,
 			}));
 		});
 
@@ -1035,6 +1104,9 @@ export default class RosterScanner
 			if(mark.certain || mark.verdict === true){
 				colour = green;
 				label = mark.verdict === true ? 'this one' : '';
+			} else if(mark.interchangeable){
+				colour = green;
+				label = 'any of these';
 			} else if(mark.verdict === false){
 				colour = red;
 				label = 'not this one';
