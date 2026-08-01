@@ -68,10 +68,12 @@
 				// the roster layout those answers were true of
 				confirmed: {},
 				onShip: {},
+				identified: {},
 				hovering: null,
 				pending: null,
 				agreeing: 0,
 				lastReport: '',
+				lastWhy: '',
 				layout: {},
 
 				// What the voyage is after, and the last few things hovering
@@ -119,6 +121,7 @@
 				this.message = 'Reading the portraits…';
 				this.confirmed = {};
 				this.onShip = {};
+				this.identified = {};
 				this.hovering = null;
 				this.pending = null;
 				this.agreeing = 0;
@@ -211,6 +214,7 @@
 					this.layout = named;
 					this.confirmed = {};
 					this.onShip = {};
+					this.identified = {};
 
 					// Whoever was under the mouse may not be there any more
 					this.hovering = null;
@@ -225,14 +229,26 @@
 				// moved along them. The panel has just named that tile anyway.
 				let seen = this.readHovered(scan);
 
+				// Anyone the panel has named stays named, for as long as the
+				// roster holds still. The glow comes and goes with the mouse and
+				// took the tile out of the scan with it every time, so a tile
+				// being looked at was the one tile nothing could be said about —
+				// and the settling that would have restored it needs three ticks
+				// during which it is missing.
 				if(seen && seen.where.column >= 2){
-					let held = scan.tiles.find(t => t.column === seen.where.column && t.row === seen.where.row);
-
-					if(held && !held.type){
-						held.type = seen.type;
-						held.level = held.level || Number(seen.level) || null;
-					}
+					this.identified[seen.key] = {type: seen.type, level: Number(seen.level) || null};
 				}
+
+				scan.tiles.forEach(held => {
+					if(held.type){return;}
+
+					let known = this.identified[`${held.column},${held.row}`];
+
+					if(!known){return;}
+
+					held.type = known.type;
+					held.level = held.level || known.level;
+				});
 
 				let found = scanner.find(scan, picks, RosterScanner.aboard(scan, this.onShip));
 
@@ -359,11 +375,13 @@
 					&& m.tile.column === seen.where.column && m.tile.row === seen.where.row);
 
 				// Nothing is asking about this tile, or it is already settled
-				if(!mark){return;}
+				if(!mark){return this.why(key, 'no box is asking about it');}
 
 				// The panel is showing something else, most likely because the
 				// mouse has moved on since. Better no answer than a wrong one.
-				if(seen.type !== mark.type){return;}
+				if(seen.type !== mark.type){
+					return this.why(key, `panel says ${seen.type}, the box says ${mark.type}`);
+				}
 
 				let wanted = mark.levels.map(Number).filter(Boolean);
 
@@ -509,6 +527,21 @@
 
 				this.lastReport = text;
 				console.log(text);
+			},
+
+			/**
+			 * Say why a hover produced no verdict, once per reason
+			 * @param  {string} key
+			 * @param  {string} reason
+			 * @return {void}
+			 */
+			why(key, reason){
+				let said = `${key}: ${reason}`;
+
+				if(this.lastWhy === said){return;}
+
+				this.lastWhy = said;
+				this.note(`hovered ${said}`);
 			},
 
 			/**
