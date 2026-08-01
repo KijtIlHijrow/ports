@@ -623,7 +623,7 @@
 
 					if(open){
 						notes.push(`${open} to tell apart — hover them`
-							+ (levels.length ? ` (level ${levels.sort().join(' or ')}, then the stats decide)` : ''));
+							+ (levels.length ? `; any at the wrong level are already gone, so the stats decide` : ''));
 					}
 
 					if(settled){notes.push(`${settled} confirmed by hovering`);}

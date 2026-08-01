@@ -1119,11 +1119,13 @@ export default class RosterScanner
 			} else if(mark.verdict === false){
 				colour = red;
 				label = 'not this one';
-			} else if(mark.levels.length){
-				// The game prints the level on every tile, so saying which
-				// level is wanted is the difference between checking four crew
-				// members and reading one number
-				label = 'want ' + mark.levels.join(' or ');
+			} else {
+				// Not "want level 4". A tile at the wrong level has already
+				// been dropped from the boxes by its badge, so every one still
+				// showing is at a level the voyage wants — and a matching level
+				// settles nothing, since two crew can share one and differ by
+				// fifty combat. Only the panel can finish this.
+				label = 'hover';
 			}
 
 			alt1.overLayRect(
