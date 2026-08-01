@@ -192,11 +192,27 @@
 					this.hovering = null;
 				}
 
+				// Read the panel before matching, not after. The tile under the
+				// mouse carries the hover glow, which can put its portrait out
+				// of reach — so the crew member being looked at was the one
+				// dropping out of the scan, and the boxes flickered as the mouse
+				// moved along them. The panel has just named that tile anyway.
+				let seen = this.readHovered(scan);
+
+				if(seen && seen.where.column >= 2){
+					let held = scan.tiles.find(t => t.column === seen.where.column && t.row === seen.where.row);
+
+					if(held && !held.type){
+						held.type = seen.type;
+						held.level = held.level || Number(seen.level) || null;
+					}
+				}
+
 				let found = scanner.find(scan, picks, RosterScanner.aboard(scan, this.onShip));
 
 				found.room = RosterScanner.room(scan, this.onShip);
 
-				this.askThePanel(scan, found);
+				this.judge(found, seen);
 
 				found.marks.forEach(mark => {
 					mark.verdict = this.confirmed[`${mark.tile.column},${mark.tile.row}`];
@@ -228,7 +244,7 @@
 			 * @param  {object} found
 			 * @return {void}
 			 */
-			askThePanel(scan, found){
+			readHovered(scan){
 				let reader = crewReader();
 				let tile = scan.location.skin.grid.tile;
 
@@ -238,24 +254,19 @@
 
 				this.releaseHover(scan, where);
 
-				if(!where || where.column < 2){return;}
+				if(!where || where.column < 2){return null;}
 
 				let key = `${where.column},${where.row}`;
 				let onShip = where.row === 1;
 
-				let mark = onShip ? null : found.marks.find(m => !m.certain
-					&& m.tile.column === where.column && m.tile.row === where.row);
-
-				// Nothing to settle here: a tile that is already certain, or one
-				// no pick is asking about
-				if(!onShip && !mark){return;}
-
-				// The scan has already found the interface this tick
-				if(!reader.read(scan.location)){return;}
+				// Every hovered crew tile is read, not only ones already boxed.
+				// Skipping the rest meant a tile the portrait could not place
+				// stayed unplaced even while the panel was naming it.
+				if(!reader.read(scan.location)){return null;}
 
 				let result = reader.result;
 
-				if(!result.type.found || !result.type.name || result.type.name === 'captain'){return;}
+				if(!result.type.found || !result.type.name || result.type.name === 'captain'){return null;}
 
 				// The panel lags the mouse, so a reading taken mid-move belongs
 				// to the tile just left rather than the one arrived at. Without
@@ -267,7 +278,7 @@
 				if(settled !== this.pending){
 					this.pending = settled;
 					this.agreeing = 1;
-					return;
+					return null;
 				}
 
 				this.agreeing++;
@@ -276,7 +287,7 @@
 				// by longer than that, and a stale reading holds still while it
 				// does — which is how a tile holding a First Mate was recorded
 				// as an empty slot, twice running, and then learned as one.
-				if(this.agreeing < 3){return;}
+				if(this.agreeing < 3){return null;}
 
 				// Noted for releaseHover, which captures it once the mouse has
 				// moved off and taken the hover glow with it
@@ -295,14 +306,33 @@
 						this.onShip[key] = {type: result.type.name, level: level};
 						this.note(`${key} aboard: ${result.type.name} level ${result.level}`);
 					}
-
-					return;
 				}
+
+				return {where: where, key: key, type: result.type.name, level: result.level};
+			},
+
+			/**
+			 * Turn a settled hover into a verdict on the tile it names
+			 * @param  {object} found
+			 * @param  {object|null} seen
+			 * @return {void}
+			 */
+			judge(found, seen){
+				if(!seen || seen.where.row === 1){return;}
+
+				let key = seen.key;
+
+				let mark = found.marks.find(m => !m.certain
+					&& m.tile.column === seen.where.column && m.tile.row === seen.where.row);
+
+				// Nothing is asking about this tile, or it is already settled
+				if(!mark){return;}
 
 				// The panel is showing something else, most likely because the
 				// mouse has moved on since. Better no answer than a wrong one.
-				if(result.type.name !== mark.type){return;}
+				if(seen.type !== mark.type){return;}
 
+				let level = Number(seen.level);
 				let wanted = mark.levels.map(Number).filter(Boolean);
 
 				// Nothing to judge against. Calling this "not this one" would be
@@ -321,7 +351,7 @@
 				let verdict = wanted.indexOf(level) !== -1;
 
 				if(this.confirmed[key] !== verdict){
-					this.note(`${key} is a ${mark.type} level ${result.level}`
+					this.note(`${key} is a ${mark.type} level ${seen.level}`
 						+ `, wanted ${wanted.length ? wanted.join(' or ') : '(none recorded)'}`
 						+ ` — ${verdict ? 'this one' : 'not this one'}`);
 				}
