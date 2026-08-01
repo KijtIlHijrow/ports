@@ -821,9 +821,19 @@ export default class RosterScanner
 	find(scan, picks, crewed){
 		if(!scan){return {found: false, reason: 'interface'};}
 
+		// Stats come along, because they are the only thing that separates two
+		// crew of one type at one level. Personal bonuses differ: two Stowaways
+		// both at level 3 sat at 0/91/40 and 0/141/30, which is fifty combat
+		// between them and a different voyage.
 		let remaining = (picks || [])
 			.filter(pick => pick && pick.type && pick.type !== 'Empty')
-			.map(pick => ({type: pick.type, level: pick.level}));
+			.map(pick => ({
+				type: pick.type,
+				level: pick.level,
+				morale: pick.morale,
+				combat: pick.combat,
+				seafaring: pick.seafaring,
+			}));
 
 		let aboard = (crewed || []).map(entry => ({
 			type: entry.type,
@@ -906,8 +916,9 @@ export default class RosterScanner
 		let wanted = {};
 
 		remaining.forEach(pick => {
-			wanted[pick.type] = wanted[pick.type] || {count: 0, levels: []};
+			wanted[pick.type] = wanted[pick.type] || {count: 0, levels: [], crew: []};
 			wanted[pick.type].count++;
+			wanted[pick.type].crew.push(pick);
 
 			if(pick.level){wanted[pick.type].levels.push(pick.level);}
 		});
@@ -966,20 +977,15 @@ export default class RosterScanner
 			// Which levels to look for, when the portrait alone cannot say
 			let levels = certain ? [] : wanted[name].levels.slice().sort((a, b) => a - b);
 
-			// Every one of them holds a level the voyage wants and there are
-			// more than it needs, so they are the same crew member as far as
-			// this voyage is concerned. Saying "check the level" there sends
-			// you to compare two numbers that are equal.
-			let interchangeable = !certain && levels.length
-				&& tiles.every(tile => tile.level
-					&& levels.some(level => Number(level) === Number(tile.level)));
-
 			tiles.forEach(tile => marks.push({
 				tile: tile,
 				type: name,
 				certain: certain,
-				interchangeable: !!interchangeable,
-				levels: interchangeable ? [] : levels,
+				levels: levels,
+
+				// Who the voyage actually asked for, stats and all. A level
+				// narrows the field; only the stats settle it.
+				crew: certain ? [] : wanted[name].crew.slice(),
 			}));
 		});
 
@@ -1110,9 +1116,6 @@ export default class RosterScanner
 			if(mark.certain || mark.verdict === true){
 				colour = green;
 				label = mark.verdict === true ? 'this one' : '';
-			} else if(mark.interchangeable){
-				colour = green;
-				label = 'any of these';
 			} else if(mark.verdict === false){
 				colour = red;
 				label = 'not this one';

@@ -163,7 +163,13 @@
 			point(){
 				let picks = this.$root.result.crew
 					.filter(member => member.type && member.type.name && member.type.name !== 'Empty')
-					.map(member => ({type: member.type.name, level: this.levelOf(member)}));
+					.map(member => ({
+						type: member.type.name,
+						level: this.levelOf(member),
+						morale: member.morale,
+						combat: member.combat,
+						seafaring: member.seafaring,
+					}));
 
 				if(!picks.length){
 					this.message = 'Nothing to find';
@@ -308,7 +314,14 @@
 					}
 				}
 
-				return {where: where, key: key, type: result.type.name, level: result.level};
+				return {
+					where: where, key: key,
+					type: result.type.name,
+					level: result.level,
+					morale: result.morale,
+					combat: result.combat,
+					seafaring: result.seafaring,
+				};
 			},
 
 			/**
@@ -332,7 +345,6 @@
 				// mouse has moved on since. Better no answer than a wrong one.
 				if(seen.type !== mark.type){return;}
 
-				let level = Number(seen.level);
 				let wanted = mark.levels.map(Number).filter(Boolean);
 
 				// Nothing to judge against. Calling this "not this one" would be
@@ -348,11 +360,15 @@
 					return;
 				}
 
-				let verdict = wanted.indexOf(level) !== -1;
+				// The level narrows the field; the stats settle it. Two crew of
+				// one type at one level are not the same crew member — personal
+				// bonuses differ, and the voyage was calculated on one of them.
+				let match = (mark.crew || []).find(pick => this.sameCrew(pick, seen));
+				let verdict = !!match;
 
 				if(this.confirmed[key] !== verdict){
 					this.note(`${key} is a ${mark.type} level ${seen.level}`
-						+ `, wanted ${wanted.length ? wanted.join(' or ') : '(none recorded)'}`
+						+ ` ${seen.morale}/${seen.combat}/${seen.seafaring}`
 						+ ` — ${verdict ? 'this one' : 'not this one'}`);
 				}
 
@@ -456,7 +472,8 @@
 					found.marks.forEach(mark => {
 						lines.push(`    ${mark.tile.column},${mark.tile.row}  ${mark.type.padEnd(22)}`
 							+ ` tile level ${String(mark.tile.level || '-').padEnd(4)}`
-							+ ` ${mark.certain ? 'green' : mark.interchangeable ? 'green (any of these)' : (mark.verdict === true ? 'green (hovered)' : mark.verdict === false ? 'red (hovered)' : 'amber')}`
+							+ ` ${mark.certain ? 'green' : (mark.verdict === true ? 'green (hovered)' : mark.verdict === false ? 'red (hovered)' : 'amber')}`
+							+ (mark.crew && mark.crew.length ? `  wants ${mark.crew.map(c => `lvl ${c.level} ${c.morale}/${c.combat}/${c.seafaring}`).join(' or ')}` : '')
 							+ (mark.levels.length ? `  wants ${mark.levels.join(' or ')}` : ''));
 					});
 				}
@@ -484,6 +501,33 @@
 
 				this.notes.unshift(line);
 				this.notes = this.notes.slice(0, 4);
+			},
+
+			/**
+			 * Is this the very crew member the voyage was calculated on?
+			 *
+			 * Type and level are not enough. Two Stowaways both at level 3 sat
+			 * at 0/91/40 and 0/141/30 — fifty combat between them, and a
+			 * different voyage depending which one sails. The stats are the only
+			 * thing that tells them apart, and the panel gives them.
+			 *
+			 * Where the roster never recorded stats there is nothing to compare,
+			 * so the level is allowed to answer alone rather than refusing every
+			 * candidate.
+			 *
+			 * @param  {object} pick   what the calculator chose
+			 * @param  {object} seen   what the panel is showing
+			 * @return {boolean}
+			 */
+			sameCrew(pick, seen){
+				if(Number(pick.level) !== Number(seen.level)){return false;}
+
+				let stats = ['morale', 'combat', 'seafaring'];
+				let recorded = stats.filter(stat => Number(pick[stat]));
+
+				if(!recorded.length){return true;}
+
+				return recorded.every(stat => Number(pick[stat]) === Number(seen[stat]));
 			},
 
 			/**
@@ -570,10 +614,7 @@
 				if(unsure){
 					let settled = found.marks.filter(mark => mark.verdict === true).length;
 					let ruled = found.marks.filter(mark => mark.verdict === false).length;
-					let any = found.marks.filter(mark => mark.interchangeable).length;
-					let open = unsure - settled - ruled - any;
-
-					if(any){notes.push(`${any} green — same type and level, take any`);}
+					let open = unsure - settled - ruled;
 
 					let levels = found.marks
 						.filter(mark => !mark.certain && mark.verdict === undefined)
@@ -581,8 +622,8 @@
 						.filter((level, i, all) => level && all.indexOf(level) === i);
 
 					if(open){
-						notes.push(`${open} to tell apart — hover them, or read the level`
-							+ (levels.length ? ` (want ${levels.sort().join(', ')})` : ''));
+						notes.push(`${open} to tell apart — hover them`
+							+ (levels.length ? ` (level ${levels.sort().join(' or ')}, then the stats decide)` : ''));
 					}
 
 					if(settled){notes.push(`${settled} confirmed by hovering`);}
