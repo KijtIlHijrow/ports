@@ -72,7 +72,7 @@
 				pending: null,
 				agreeing: 0,
 				lastReport: '',
-				layout: '',
+				layout: {},
 
 				// What the voyage is after, and the last few things hovering
 				// settled — on screen, because a console object is no use to
@@ -123,7 +123,7 @@
 				this.pending = null;
 				this.agreeing = 0;
 				this.lastReport = '';
-				this.layout = '';
+				this.layout = {};
 				this.notes = [];
 				this.warned = false;
 
@@ -183,19 +183,39 @@
 					return this.message = 'Open the ship\'s crew interface';
 				}
 
-				// Anything settled by hovering only holds while the roster
-				// stands still. Clicking a crew member onto the ship shuffles
-				// everyone behind them, and an answer about a tile is worthless
-				// once somebody else is in it.
-				let layout = scan.tiles.map(tile => tile.type || '?').join('|');
+				// Anything settled by hovering only holds while the roster stands
+				// still. Clicking a crew member onto the ship shuffles everyone
+				// behind them, and an answer about a tile is worthless once
+				// somebody else is in it.
+				//
+				// But a tile dropping out because the mouse is over it is not the
+				// roster moving. Comparing the whole grid as one string made
+				// every hover look like a reflow and wiped the answer the hover
+				// had just produced — so the same crew member had to be hovered
+				// again and again. Only a tile that is recognised as somebody
+				// *different* counts as movement.
+				let moved = false;
+				let named = {};
 
-				if(layout !== this.layout){
-					this.layout = layout;
+				scan.tiles.forEach(tile => {
+					if(!tile.type){return;}
+
+					let key = `${tile.column},${tile.row}`;
+
+					named[key] = tile.type;
+
+					if(this.layout[key] && this.layout[key] !== tile.type){moved = true;}
+				});
+
+				if(moved){
+					this.layout = named;
 					this.confirmed = {};
 					this.onShip = {};
 
 					// Whoever was under the mouse may not be there any more
 					this.hovering = null;
+				} else {
+					this.layout = Object.assign({}, this.layout, named);
 				}
 
 				// Read the panel before matching, not after. The tile under the
