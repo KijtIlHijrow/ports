@@ -833,10 +833,6 @@ export default class RosterScanner
 			matched: false,
 		}));
 
-		// Types the voyage has no use for at all, whatever the level
-		let asked = {};
-		remaining.forEach(pick => { asked[pick.type] = true; });
-
 		// Each crew member already aboard settles one of the picks. A level we
 		// know has to match exactly — a Brimhaven Pirate at level 4 does not
 		// satisfy a voyage asking for one at level 5, it is simply occupying the
@@ -873,26 +869,36 @@ export default class RosterScanner
 		// pick either — choosing one would send you hunting for a crew member
 		// already on the ship.
 		let covered = {};
+		let outstanding = {};
+
+		remaining.forEach(pick => {
+			outstanding[pick.type] = (outstanding[pick.type] || 0) + 1;
+		});
 
 		aboard.forEach(entry => {
 			if(entry.matched || entry.level){return;}
-			if(!remaining.some(pick => pick.type === entry.type)){return;}
 
+			// Only as many as the voyage actually asked for. Without the count
+			// coming down, every crew member of that type aboard answered the
+			// same single pick — so a second Brimhaven Pirate on a ship wanting
+			// one looked accounted for, and never showed up as surplus.
+			if(!outstanding[entry.type]){return;}
+
+			outstanding[entry.type]--;
 			covered[entry.type] = (covered[entry.type] || 0) + 1;
 			entry.matched = true;
 		});
 
-		// Anyone aboard that the voyage has no use for is holding a slot it
-		// needs.
+		// Anyone aboard still unmatched is holding a slot the voyage needs.
+		// Every pick has had its pick of them by now, so whoever is left over
+		// is left over.
 		//
-		// Requiring a level here meant nothing was ever flagged when the level
-		// would not read — including a Travelling Drunk sitting on a ship whose
-		// voyage never asked for one. A crew member hovered is known outright,
-		// and a type no pick mentions is surplus whatever its level. What is
-		// still not claimed is a tile named only by its portrait, where being
-		// wrong would have you take off somebody you need.
-		let spares = aboard.filter(entry => entry.tile && !entry.matched
-			&& (entry.certain || !asked[entry.type]));
+		// This used to be claimed only for crew that had been hovered, out of
+		// caution about trusting a portrait — but the same portraits are already
+		// trusted to satisfy a pick, and refusing to trust them here meant that
+		// a full ship with picks outstanding said nothing at all. That is the
+		// one moment the advice is the only thing that helps.
+		let spares = aboard.filter(entry => entry.tile && !entry.matched);
 
 		// Levels wanted per type, not just a count. A portrait cannot separate
 		// four Travelling Drunks, but the game prints each one's level on its

@@ -548,8 +548,12 @@
 				let room = found.room;
 
 				if(found.spares.length){
+					let unsure = found.spares.filter(s => !s.certain).length;
+
 					notes.push(`${found.spares.length} aboard the voyage does not want`
-						+ ` (${found.spares.map(s => `${s.type} lvl ${s.level}`).join(', ')}) — take them off`);
+						+ ` (${found.spares.map(s => `${s.type}${s.level ? ' lvl ' + s.level : ''}`).join(', ')})`
+						+ ' — take them off'
+						+ (unsure ? ', hover to be sure' : ''));
 				}
 
 				if(room && found.marks.length > room.free && !found.spares.length){
