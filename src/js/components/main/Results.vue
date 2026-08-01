@@ -69,6 +69,7 @@
 				confirmed: {},
 				onShip: {},
 				identified: {},
+				steady: {},
 				hovering: null,
 				pending: null,
 				agreeing: 0,
@@ -122,6 +123,7 @@
 				this.confirmed = {};
 				this.onShip = {};
 				this.identified = {};
+				this.steady = {};
 				this.hovering = null;
 				this.pending = null;
 				this.agreeing = 0;
@@ -215,6 +217,7 @@
 					this.confirmed = {};
 					this.onShip = {};
 					this.identified = {};
+					this.steady = {};
 
 					// Whoever was under the mouse may not be there any more
 					this.hovering = null;
@@ -253,6 +256,30 @@
 				let found = scanner.find(scan, picks, RosterScanner.aboard(scan, this.onShip));
 
 				found.room = RosterScanner.room(scan, this.onShip);
+
+				// Telling you to take a crew member off is the one instruction
+				// that costs you if it is wrong — a wrong click each way, and
+				// the roster reshuffles both times. So it waits for the tile to
+				// hold still. 5,1 read Empty, then unrecognised, then a Catherby
+				// Fisherman across three ticks with nothing touching it, and the
+				// instant it read as somebody it was declared surplus.
+				scan.tiles.forEach(tile => {
+					if(tile.row !== 1){return;}
+
+					let key = `${tile.column},${tile.row}`;
+					let held = this.steady[key];
+
+					if(held && held.type === (tile.type || '')){held.ticks++;}
+					else {this.steady[key] = {type: tile.type || '', ticks: 1};}
+				});
+
+				found.spares = found.spares.filter(spare => {
+					if(spare.certain){return true;}
+
+					let held = this.steady[`${spare.tile.column},${spare.tile.row}`];
+
+					return held && held.ticks >= 4;
+				});
 
 				this.judge(found, seen);
 
