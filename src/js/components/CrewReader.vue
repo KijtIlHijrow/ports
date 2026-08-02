@@ -476,16 +476,32 @@
 			 * @return {void}
 			 */
 			sweepCaptain(tile, result){
-				// The hat icon over the panel is what says "captain", so a
-				// reading without it is a reading of something else — a stale
-				// panel, or the block found in the wrong place
-				if(result.type.name !== 'captain'){
-					this.note(tile, result);
+				// A slot with no captain in it. Nothing to read, and nothing
+				// wrong either, so it is not worth saying anything about.
+				if(result.type.name === 'Empty'){return this.progress('');}
 
-					return this.progress('That captain would not read — hover them again');
+				// The panel is naming one of the 58 crew types, and a captain is
+				// never one of them: this is the Compare block still showing the
+				// crew member the mouse was over a moment ago. Reading it here
+				// would file their stats under a captain.
+				//
+				// What is deliberately not asked for is the captain's hat icon.
+				// It only matches on the old blue interface — the reference for
+				// it was captured there and findsubimg is exact, and unlike the
+				// other two references it never got a counterpart taken from the
+				// current skin. Requiring it rejected every captain on a modern
+				// client. The column is the better answer in any case: it is the
+				// captains' column, which is why a single Alt+1 read has always
+				// trusted it and never consulted the icon either.
+				if(result.type.found && result.type.name !== 'captain'){
+					return this.progress('Still showing a crew member — hold on the captain a moment');
 				}
 
-				delete this.missed[`${tile.column},${tile.row}`];
+				// A captain has stats. A block that gave up none of them is a
+				// panel that is not really there, whatever else was read off it.
+				if(!result.morale && !result.combat && !result.seafaring){
+					return this.progress('Hold on the captain until their details show');
+				}
 
 				// Settled twice running before it is credited, for the same
 				// reason the crew are: the panel takes a frame or two to follow
