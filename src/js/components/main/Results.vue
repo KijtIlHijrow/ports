@@ -429,6 +429,23 @@
 				// one type at one level are not the same crew member — personal
 				// bonuses differ, and the voyage was calculated on one of them.
 				let match = (mark.crew || []).find(pick => this.sameCrew(pick, seen));
+
+				// This crew member answers one of the picks, but not which one.
+				// Another of their type is already aboard and could not be put a
+				// level to, so one of the picks is already satisfied and it is
+				// not known which — and calling this "this one" would send you
+				// after the crew member who has already sailed just as readily
+				// as the one still wanted.
+				//
+				// Ruling a tile out stays sound in the same position: matching
+				// none of the picks means none of them, whichever is outstanding.
+				if(match && mark.ambiguous){
+					delete this.confirmed[key];
+
+					return this.why(key, `one of the ${mark.type}s the voyage wants is already aboard`
+						+ ` — hover the one on the ship to say which of these is still needed`);
+				}
+
 				let verdict = !!match;
 
 				if(this.confirmed[key] !== verdict){
@@ -702,8 +719,20 @@
 						.filter((level, i, all) => level && all.indexOf(level) === i);
 
 					if(open){
-						notes.push(`${open} to tell apart — hover them`
-							+ (levels.length ? `; any at the wrong level are already gone, so the stats decide` : ''));
+						// Hovering the candidates cannot settle an ambiguous
+						// type, however long you spend on them: the pick they
+						// answer is the one already aboard as easily as the one
+						// still wanted. Send them to the tile that can answer.
+						let stuck = found.marks
+							.filter(mark => mark.ambiguous && mark.verdict === undefined)
+							.map(mark => mark.type)
+							.filter((type, i, all) => all.indexOf(type) === i);
+
+						notes.push(stuck.length
+							? `${open} to tell apart — hover the ${stuck.join(' and ')}`
+								+ ` already on the ship, which is what says who is still wanted`
+							: `${open} to tell apart — hover them`
+								+ (levels.length ? `; any at the wrong level are already gone, so the stats decide` : ''));
 					}
 
 					if(settled){notes.push(`${settled} confirmed by hovering`);}

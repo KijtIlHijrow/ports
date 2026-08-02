@@ -946,21 +946,30 @@ export default class RosterScanner
 		});
 
 		// A tile whose level is known answers the question a portrait cannot,
-		// so it needs no hovering and no reading of the number by eye
+		// so it needs no hovering and no reading of the number by eye.
+		//
+		// Only a badge that actually read can rule a tile out, though. This used
+		// to keep the tiles matching a wanted level and drop the rest outright
+		// once there were enough of them, which quietly counted "level would not
+		// read" as "wrong level". A badge that missed for one tick took its tile
+		// out of the running, and the tile left behind was then the only one of
+		// its type — which is the definition of certain, so it turned green.
+		//
+		// Two Brimhaven Pirates the voyage could not choose between became one
+		// green box saying "click this", flipping to the other as the badges
+		// came and went. Worse, a green box is a settled question: hovering the
+		// crew member you were being asked to identify answered "no box is
+		// asking about it", so the one thing that could have told them apart was
+		// refused.
 		Object.keys(holding).forEach(name => {
 			if(!wanted[name] || !wanted[name].levels.length){return;}
 
-			let named = holding[name].filter(tile => tile.level);
+			let candidates = holding[name].filter(tile => !tile.level
+				|| wanted[name].levels.some(level => Number(level) === Number(tile.level)));
 
-			if(!named.length){return;}
-
-			let matching = named.filter(tile => wanted[name].levels.some(
-				level => Number(level) === Number(tile.level)
-			));
-
-			// Every level wanted has been found by its own badge, so the rest
-			// of that type are not candidates at all
-			if(matching.length >= wanted[name].count){holding[name] = matching;}
+			// Every one of them ruled out means the levels are not to be trusted
+			// rather than that the crew member is not there
+			if(candidates.length){holding[name] = candidates;}
 		});
 
 		let marks = [], missing = [];
@@ -977,11 +986,20 @@ export default class RosterScanner
 			// Which levels to look for, when the portrait alone cannot say
 			let levels = certain ? [] : wanted[name].levels.slice().sort((a, b) => a - b);
 
+			// More picks of this type than there are slots left to fill, which
+			// happens when one of them is already aboard in a crew member whose
+			// level never read. Which pick is still outstanding is then not
+			// known, so a tile matching one of them has been matched to "one of
+			// these" and no further — and the thing that settles it is up in the
+			// ship's row, not down here among the candidates.
+			let ambiguous = !certain && wanted[name].crew.length > wanted[name].count;
+
 			tiles.forEach(tile => marks.push({
 				tile: tile,
 				type: name,
 				certain: certain,
 				levels: levels,
+				ambiguous: ambiguous,
 
 				// Who the voyage actually asked for, stats and all. A level
 				// narrows the field; only the stats settle it.
