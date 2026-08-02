@@ -24,6 +24,16 @@
 		<div v-if="finding" class="text-xs opacity-75 mt-1">
 			<p>Wants: {{ looking }}</p>
 			<p>Hover the ship's row as well, to pin down which of them are already aboard.</p>
+
+			<p v-if="absent.length" class="mt-1">
+				No {{ absent.join(' and no ') }} anywhere in the roster.
+				A crew member away on a voyage is taken out of it, and the calculator only leaves out the ones marked
+				<em>Sent on ship</em> &mdash; so mark whoever is at sea and calculate again to pick from who is actually here.
+				<span v-if="unrecognised">
+					({{ unrecognised }} tiles could not be recognised, so try <em>Read roster</em> first in case they are there after all.)
+				</span>
+			</p>
+
 			<p v-for="line in notes">{{ line }}</p>
 		</div>
 
@@ -83,6 +93,17 @@
 				looking: '',
 				notes: [],
 				warned: false,
+
+				// Crew the voyage was calculated on that are not on screen at
+				// all. Worth a line of its own rather than a clause in the
+				// summary: there is nothing to hover and nothing to click, so
+				// the only way forward is off the roster entirely.
+				absent: [],
+
+				// How many tiles the portraits could not name, which decides
+				// whether "not on screen" can be stated flatly or has to allow
+				// for their being there and simply unrecognised
+				unrecognised: 0,
 			}
 		},
 
@@ -131,6 +152,8 @@
 				this.layout = {};
 				this.notes = [];
 				this.warned = false;
+				this.absent = [];
+				this.unrecognised = 0;
 
 				// What the voyage is actually asking for. If a level here does
 				// not match anything in the roster, the picks are describing
@@ -154,6 +177,8 @@
 			stopFinding(){
 				this.finding = false;
 				this.message = '';
+				this.absent = [];
+				this.unrecognised = 0;
 
 				if(this.timer){
 					clearInterval(this.timer);
@@ -295,6 +320,9 @@
 				scanner.show(found.marks, 0.7, found.spares);
 
 				this.report(scan, found);
+
+				this.absent = found.missing.map(name => this.describe(name, found));
+				this.unrecognised = found.unknown;
 
 				this.message = this.summarise(found);
 			},
@@ -574,6 +602,28 @@
 			},
 
 			/**
+			 * Name a crew type the way the voyage asked for it
+			 *
+			 * "Stowaway, Stowaway" says nothing about which two, and the levels
+			 * are the whole of what you need to go looking for them.
+			 *
+			 * @param  {string} name
+			 * @param  {object} found
+			 * @return {string}
+			 */
+			describe(name, found){
+				let want = (found.wanted || {})[name];
+
+				if(!want){return name;}
+
+				let levels = (want.levels || []).slice().sort((a, b) => a - b);
+
+				if(!levels.length){return want.count > 1 ? `${name} x${want.count}` : name;}
+
+				return `${name} lvl ${levels.join(' and ')}`;
+			},
+
+			/**
 			 * Say why a hover produced no verdict, once per reason
 			 * @param  {string} key
 			 * @param  {string} reason
@@ -740,7 +790,7 @@
 				}
 
 				if(found.missing.length){
-					notes.push(`not in the roster: ${found.missing.join(', ')}`);
+					notes.push(`not on screen: ${found.missing.map(name => this.describe(name, found)).join(', ')}`);
 				}
 
 				if(found.unknown){
