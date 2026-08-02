@@ -80,7 +80,11 @@
 					this.combat = result.combat;
 					this.seafaring = result.seafaring;
 
-					
+					// Reading a voyage is only ever asked for because someone
+					// wants the answer, so say the read landed and let the
+					// calculator get on with it. Typed changes stay manual —
+					// half a number is not a question worth answering.
+					this.$emit('read');
 				}
 			}
 		}

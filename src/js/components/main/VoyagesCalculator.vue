@@ -15,7 +15,7 @@
 				<p>Seafaring</p>
 				<input type="text" name="seafaring1" id="seafaring" v-model="seafaring" class="input p-2 text-center" @click="selectText">
 			</div> -->
-			<voyages-reader v-on:voyage="updateVoyage"></voyages-reader>
+			<voyages-reader v-on:voyage="updateVoyage" v-on:read="calculate"></voyages-reader>
 			
 			<div class="w-1/4 px-2">
 				<p>&nbsp;</p>
@@ -53,7 +53,11 @@
 				this.seafaring = voyage.seafaring;
 			},
 
-			calculate(){	
+			calculate(){
+				// Alt+1 over a second voyage while the first is still being
+				// worked out would leave two runs racing for the one result
+				if(this.processing){return;}
+
 				this.processing = true;
 
 				let captains = this.$root.captains.filter(c => {
