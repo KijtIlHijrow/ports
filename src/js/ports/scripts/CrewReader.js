@@ -1,4 +1,4 @@
-import { closeCrewModern } from '../data/skins';
+import { closeCrewModern, captainsIconModern } from '../data/skins';
 import crewRegions from '../data/crew.json';
 import crewSpeeds from '../data/speeds.json';
 import DigitReader from './DigitReader';
@@ -19,6 +19,11 @@ export default class CrewReader
 		ImageData.fromBase64((i) => {
 			this.images.closeCrew = i;
 		}, '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');
+
+		// The same figure on the current interface skin
+		ImageData.fromBase64((i) => {
+			this.images.captainsIconModern = i;
+		}, captainsIconModern);
 
 		// Icon of the captain's hat. We use this to determine whether or not the crew
 		// member we're viewing is of the type of captain
@@ -354,8 +359,20 @@ export default class CrewReader
 	 * @return {Boolean}       
 	 */
 	isCaptain(image){
-		let captainsPosition = a1lib.findsubimg(image, this.images.captainsIcon);
-		return captainsPosition.length;
+		// Both skins, in the order they are likely to be on screen. The match is
+		// exact, so each reference is only ever found on the interface it was
+		// captured from — and for a long time only the blue-skin one existed,
+		// which is why this answered "no" to every captain on a current client.
+		let references = [this.images.captainsIconModern, this.images.captainsIcon];
+
+		for(let i = 0; i < references.length; i++){
+			// The base64 decode is async, so a reference may not be ready yet
+			if(!references[i]){continue;}
+
+			if(a1lib.findsubimg(image, references[i]).length){return true;}
+		}
+
+		return false;
 	}
 
 	/**
