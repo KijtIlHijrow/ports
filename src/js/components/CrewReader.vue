@@ -32,6 +32,13 @@
 				stable: 0,
 				swept: {},
 
+				// The captains, counted apart from the crew. There are five of
+				// them against twenty five crew, and they are read differently
+				// enough — no type, no portrait — that one total covering both
+				// would say nothing about whether either half was finished.
+				sweptCaptains: {},
+				captainsRead: [],
+
 				// What the portraits said against what the panel said, which is
 				// the only way to check the scanner against the real client
 				agreed: 0,
@@ -266,6 +273,11 @@
 			 * and, along the way, checks each portrait against what the panel
 			 * says that crew member actually is.
 			 *
+			 * The captains' column counts as part of the roster here. Their
+			 * details come from the same Compare block under the same mouse, so
+			 * leaving them out only meant the one column of the interface the
+			 * sweep passes over had to be gone round again by hand afterwards.
+			 *
 			 * @return {void}
 			 */
 			startSweeping(){
@@ -275,6 +287,8 @@
 				this.pending = null;
 				this.stable = 0;
 				this.swept = {};
+				this.sweptCaptains = {};
+				this.captainsRead = [];
 				this.agreed = 0;
 				this.disagreed = 0;
 				this.captured = 0;
@@ -293,23 +307,27 @@
 					this.scanner.scan(this.owned());
 
 					this.timer = setInterval(this.poll, 120);
-					this.progress('Run the mouse over each crew member');
+					this.progress('Run the mouse over each crew member and captain');
 				});
 			},
 
 			stopSweeping(){
-				if(this.sweeping && this.portraits.length){
+				if(this.sweeping && (this.portraits.length || this.captainsRead.length)){
 					// One flat string rather than an object. A console object has
 					// to be expanded branch by branch before it can be read or
 					// copied, and half of it comes out as unevaluated getters.
 					let offset = this.scanner.offset || {x: 0, y: 0};
 
 					let lines = [
-						`RosterSweep  read ${this.portraits.length}  agreed ${this.agreed}  disagreed ${this.disagreed}`
+						`RosterSweep  read ${this.portraits.length}  captains ${this.captainsRead.length}`
+							+ `  agreed ${this.agreed}  disagreed ${this.disagreed}`
 							+ `  captured ${this.captured}  art offset ${offset.x},${offset.y}`
 							+ `  compare offset ${this.reader.compareOffset}`,
-						'tile   panel                     portrait               lvl        stats  dist  runnerUp',
 					];
+
+					if(this.portraits.length){
+						lines.push('tile   panel                     portrait               lvl        stats  dist  runnerUp');
+					}
 
 					this.portraits.forEach(p => {
 						lines.push(
@@ -324,6 +342,18 @@
 							+ (p.level ? '' : '   <- no level')
 						);
 					});
+
+					if(this.captainsRead.length){
+						lines.push('');
+						lines.push(`${this.captainsRead.length} of 5 captains read:`);
+
+						this.captainsRead.forEach(c => {
+							lines.push(
+								`  row ${c.row}  ${String(c.name || '(unnamed)').padEnd(20)}`
+								+ ` lvl ${String(c.level).padEnd(4)} ${c.stats}`
+							);
+						});
+					}
 
 					let missed = Object.keys(this.missed);
 
@@ -376,28 +406,24 @@
 
 				let tile = this.tileUnderMouse(result);
 
-				if(!tile || tile.column < 2){
+				if(!tile){
 					this.releasePrevious(null);
 					return this.progress('Hover a crew member in the roster');
 				}
 
 				this.releasePrevious(tile);
 
-				if(!result.type.found || !result.type.name || result.type.name === 'captain'){
-					// Record why, once per tile. "Not recognised" on its own says
-					// nothing about whether the name failed to read at all or read
-					// and failed to match, and those want opposite fixes.
-					let key = `${tile.column},${tile.row}`;
+				// The captains sit in their own column down the left and are
+				// read as themselves rather than as a crew type, so the checks
+				// below — which are all about naming a type — do not apply to
+				// them. This is why they used to be skipped: the sweep only ever
+				// looked at what a portrait could name.
+				if(tile.column === 1){
+					return this.sweepCaptain(tile, result);
+				}
 
-					if(!this.missed[key]){
-						this.missed[key] = {
-							tile: key,
-							attempts: (result.type.attempts || []).slice(0, 4),
-							stats: `${result.morale}/${result.combat}/${result.seafaring}/${result.speed}`,
-							level: result.level,
-							captain: result.type.name === 'captain',
-						};
-					}
+				if(!result.type.found || !result.type.name || result.type.name === 'captain'){
+					this.note(tile, result);
 
 					return this.progress('That one was not recognised — set its type by hand');
 				}
@@ -429,6 +455,104 @@
 
 				this.swept[`${tile.column}:${tile.row}`] = true;
 				this.progress('');
+			},
+
+			/**
+			 * Take a captain's reading from the panel
+			 *
+			 * The same hover and the same settling as a crew member, and then
+			 * nothing to do with portraits: the scanner names crew types, and a
+			 * captain is not one of them. Their column is not scanned, no
+			 * signature is captured from it, and the scanner refuses to learn
+			 * anything under the name "captain" in any case.
+			 *
+			 * Which captain this is comes from the row, exactly as it does for a
+			 * single read — the panel shows a personal name ("Walter Teach")
+			 * that nothing here reads, so the tile under the mouse is the only
+			 * thing tying the reading to one of the five.
+			 *
+			 * @param  {object} tile
+			 * @param  {object} result
+			 * @return {void}
+			 */
+			sweepCaptain(tile, result){
+				// The hat icon over the panel is what says "captain", so a
+				// reading without it is a reading of something else — a stale
+				// panel, or the block found in the wrong place
+				if(result.type.name !== 'captain'){
+					this.note(tile, result);
+
+					return this.progress('That captain would not read — hover them again');
+				}
+
+				delete this.missed[`${tile.column},${tile.row}`];
+
+				// Settled twice running before it is credited, for the same
+				// reason the crew are: the panel takes a frame or two to follow
+				// the mouse, and a stale one would be filed under the captain
+				// the mouse has just arrived at.
+				let key = [
+					tile.column, tile.row, 'captain',
+					result.morale, result.combat, result.seafaring, result.level,
+				].join(':');
+
+				if(key !== this.pending){
+					this.pending = key;
+					this.stable = 1;
+					return;
+				}
+
+				this.stable++;
+
+				if(this.stable !== 2){return;}
+
+				this.applyToCaptain(tile.row, result);
+
+				// Named after applying, since a captain with no name of their own
+				// is given one there
+				let captain = this.captains.find(one => one.id == tile.row);
+
+				// One line per captain rather than one per hover. There are only
+				// five of them and passing back over one is easily done, which
+				// would otherwise fill the report with the same captain.
+				let line = {
+					row: tile.row,
+					name: captain ? captain.name : '',
+					level: result.level,
+					stats: `${result.morale}/${result.combat}/${result.seafaring}/${result.speed}`,
+				};
+
+				let at = this.captainsRead.findIndex(read => read.row === tile.row);
+
+				if(at === -1){this.captainsRead.push(line);} else {this.captainsRead.splice(at, 1, line);}
+
+				this.sweptCaptains[tile.row] = true;
+				this.progress('');
+			},
+
+			/**
+			 * Record why a tile would not read, once per tile
+			 *
+			 * "Not recognised" on its own says nothing about whether the name
+			 * failed to read at all or read and failed to match, and those want
+			 * opposite fixes.
+			 *
+			 * @param  {object} tile
+			 * @param  {object} result
+			 * @return {void}
+			 */
+			note(tile, result){
+				let key = `${tile.column},${tile.row}`;
+
+				if(this.missed[key]){return;}
+
+				this.missed[key] = {
+					tile: key,
+					attempts: (result.type.attempts || []).slice(0, 4),
+					stats: `${result.morale}/${result.combat}/${result.seafaring}/${result.speed}`,
+					level: result.level,
+					captain: result.type.name === 'captain',
+				};
 			},
 
 			/**
@@ -536,6 +660,7 @@
 				window.events.$emit('roster-sweep', {
 					sweeping: this.sweeping,
 					tiles: Object.keys(this.swept).length,
+					captains: Object.keys(this.sweptCaptains).length,
 					agreed: this.agreed,
 					disagreed: this.disagreed,
 					missed: Object.keys(this.missed).length,
