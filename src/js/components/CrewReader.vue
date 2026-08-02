@@ -375,6 +375,8 @@
 					console.log(lines.join('\n'));
 				}
 
+				if(this.sweeping){this.offerUnseen();}
+
 				this.sweeping = false;
 
 				if(this.timer){
@@ -383,6 +385,42 @@
 				}
 
 				this.progress('');
+			},
+
+			/**
+			 * Say which saved crew the sweep never laid eyes on
+			 *
+			 * The roster the app has saved outlives the one on screen. Crew you
+			 * no longer have sit in it indefinitely, and no amount of sweeping
+			 * removes them: where the roster stops being drawn there is no tile
+			 * to hover and nothing to read, so those slots are never written to.
+			 * This is the one moment the two can be compared, the sweep having
+			 * just been over everything there is to see.
+			 *
+			 * It offers and never acts. Unseen is not proof of gone — a crew
+			 * member away on a voyage is taken out of the roster by the game,
+			 * and a sweep the mouse did not finish leaves the rest unseen too.
+			 *
+			 * @return {void}
+			 */
+			offerUnseen(){
+				let seen = {};
+
+				Object.keys(this.swept).forEach(key => {
+					let parts = key.split(':');
+
+					seen[RosterScanner.slotAt(Number(parts[0]), Number(parts[1]))] = true;
+				});
+
+				let unseen = this.crew
+					.filter(member => member.type && member.type.name && member.type.name !== 'Empty')
+					.filter(member => !seen[member.id])
+					.map(member => ({id: member.id, name: member.type.name, level: member.level}));
+
+				window.events.$emit('roster-sweep-unseen', {
+					unseen: unseen,
+					read: Object.keys(this.swept).length,
+				});
 			},
 
 			/**

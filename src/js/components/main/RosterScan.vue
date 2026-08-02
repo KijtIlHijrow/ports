@@ -19,6 +19,39 @@
 		<p v-if="sweeping" class="mt-2 opacity-75">
 			Run the mouse over each crew member, and over the captains down the left. Nothing to press, and hovering will not put anyone on the ship.
 		</p>
+
+		<div v-if="unseen.length" class="mt-2 p-2 border border-white">
+			<p>The sweep never saw {{ unseen.length }} of the {{ unseen.length === 1 ? 'crew member' : 'crew' }} this app has saved:</p>
+
+			<p class="mt-1 opacity-75">{{ listed }}</p>
+
+			<p class="mt-2">
+				That happens for three different reasons, and only one of them means they should go.
+				You no longer have them &mdash; or they are <strong>away at sea</strong>, since the game takes a ship's
+				crew out of the roster while it sails, so nothing here can reach them &mdash; or the mouse simply
+				did not pass over them this time. You read {{ readCount }} of 25 on this sweep.
+			</p>
+
+			<p class="mt-2">
+				Emptying these slots throws their stats away. Do it only for crew you genuinely no longer have.
+				For anyone merely away, leave them alone and mark them <em>Sent on ship</em> instead &mdash;
+				that keeps their stats for when they come back, and the calculator skips them meanwhile.
+			</p>
+
+			<div class="mt-2">
+				<button class="text-white border border-white p-1" @click.prevent="emptyUnseen">
+					Empty {{ unseen.length === 1 ? 'that slot' : ('those ' + unseen.length + ' slots') }}
+				</button>
+
+				<button class="text-white border border-white p-1 ml-2" @click.prevent="unseen = []">
+					Leave them alone
+				</button>
+			</div>
+		</div>
+
+		<p v-if="emptied" class="mt-2 opacity-75">
+			Emptied {{ emptied }} {{ emptied === 1 ? 'slot' : 'slots' }}. Calculate again to pick from who is left.
+		</p>
 	</div>
 </template>
 
@@ -37,6 +70,13 @@
 				message: '',
 
 				read: '',
+
+				// Saved crew the sweep just finished never got a look at, and
+				// how much of the roster it did read — which is what says
+				// whether "unseen" means gone or means unfinished
+				unseen: [],
+				readCount: 0,
+				emptied: 0,
 			}
 		},
 
@@ -49,6 +89,11 @@
 				this.disagreed = state.disagreed;
 				this.missed = state.missed;
 				this.message = state.message;
+			});
+
+			window.events.$on('roster-sweep-unseen', state => {
+				this.unseen = state.unseen;
+				this.readCount = state.read;
 			});
 		},
 
@@ -75,6 +120,16 @@
 				}
 
 				return this.read;
+			},
+
+			/**
+			 * The unseen crew, named the way you would go looking for them
+			 * @return {string}
+			 */
+			listed(){
+				return this.unseen
+					.map(entry => entry.name + (entry.level ? ` lvl ${entry.level}` : ''))
+					.join(', ');
 			},
 		},
 
@@ -110,7 +165,51 @@
 			},
 
 			toggle(){
+				// Last sweep's offer does not apply to this one, and an offer
+				// left standing while the roster is being read again would be
+				// answering for a roster that has moved on
+				this.unseen = [];
+				this.emptied = 0;
+
 				window.events.$emit(this.sweeping ? 'roster-sweep-stop' : 'roster-sweep-start');
+			},
+
+			/**
+			 * Give back the slots of crew the sweep never saw
+			 *
+			 * Only ever reached by asking for it. What it throws away is the
+			 * stats, which is why the crew away at sea have to be kept out of
+			 * it — they are still yours, and the roster is where their numbers
+			 * live until they sail home.
+			 *
+			 * @return {void}
+			 */
+			emptyUnseen(){
+				let blank = this.$root.crewTypes.find(type => type.name === 'Empty');
+
+				if(!blank){return;}
+
+				let gone = 0;
+
+				this.unseen.forEach(entry => {
+					let member = this.$root.crew.find(one => one.id === entry.id);
+
+					if(!member){return;}
+
+					member.type = blank;
+					member.morale = 0;
+					member.combat = 0;
+					member.seafaring = 0;
+					member.level = 0;
+					member.ship = 0;
+
+					gone++;
+				});
+
+				this.$root.save();
+
+				this.emptied = gone;
+				this.unseen = [];
 			},
 
 			/**
