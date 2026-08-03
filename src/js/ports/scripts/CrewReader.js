@@ -1,6 +1,7 @@
 import { closeCrewModern, captainsIconModern } from '../data/skins';
 import crewRegions from '../data/crew.json';
 import crewSpeeds from '../data/speeds.json';
+import traitValues from '../data/traits.json';
 import DigitReader from './DigitReader';
 
 export default class CrewReader
@@ -45,6 +46,9 @@ export default class CrewReader
 			// The current skin draws the crew name in a paler tan than the old
 			// skin's orange, far enough apart that the orange never matches it
 			tan: [240, 190, 121],
+			// The trait lines under the stats, measured off the client rather
+			// than assumed: warmer than white and paler than the cream above
+			parchment: [240, 228, 205],
 		}
 
 		this.coordinates = {
@@ -69,6 +73,11 @@ export default class CrewReader
 				// The current client anti-aliases its numbers and no OCR font
 				// can read them, so match the digits directly instead
 				digits: true,
+				// The trait lines, which sit below everything else the block
+				// holds and run past the bottom of it once there is more than
+				// one of them. Measured from a client: the first sits on
+				// baseline 111 and the stat rows above it are 13 apart.
+				traits: {top: 96, height: 64, first: 111, step: 13, lines: 4},
 			},
 			{
 				name: 'legacy',
@@ -78,6 +87,9 @@ export default class CrewReader
 				nameColors: ['orange'],
 				coordinates: this.coordinates,
 				digits: false,
+				// Never measured on this skin, and a guessed baseline would
+				// read a captain's traits wrong rather than not at all
+				traits: null,
 			},
 		];
 
@@ -161,6 +173,10 @@ export default class CrewReader
 			return false;
 		}
 
+		// Kept for readTraits(), which runs once a reading has settled rather
+		// than on every tick and so has no location of its own
+		this.location = location;
+
 		let skin = location.skin;
 
 		// Outline the grid the reader thinks it is looking at. Six columns of
@@ -171,25 +187,7 @@ export default class CrewReader
 		// The Compare block is the one that follows the mouse, and hovering a
 		// crew member cannot rearrange the roster the way clicking one does:
 		// a click in this interface puts that crew member on the ship.
-		let block = null;
-
-		for(let i = 0; i < this.compareOffsets().length; i++){
-			let offset = this.compareOffsets()[i];
-
-			block = this.readBlock(location, offset);
-
-			if(!block){continue;}
-
-			// Only an offset that produced a name is worth keeping. The name is
-			// far and away the most alignment-sensitive thing in the block —
-			// it is read at three exact baselines, where a stat gets a whole
-			// band and the level is read leniently — so a row or two out still
-			// yields numbers while the name silently disappears. Locking onto
-			// such an offset would leave every later read nameless.
-			if(block.type.found){this.compareOffset = offset;}
-
-			break;
-		}
+		let block = this.hunt(location);
 
 		if(!block){
 			this.result = null;
@@ -213,13 +211,97 @@ export default class CrewReader
 	}
 
 	/**
+	 * Find the Compare block and read it
+	 *
+	 * A learned offset is worth trying first and is not worth trusting on its
+	 * own. The Selected block above grows a line for every trait its occupant
+	 * carries, which moves everything below it, so an offset learned against
+	 * one crew member can be wrong for the next — and once that happened
+	 * nothing read again for the rest of the session, on a panel that looked
+	 * perfectly readable. A locked offset that comes back with no stats is
+	 * therefore treated as a wrong answer rather than as an empty panel.
+	 *
+	 * @param  {object} location
+	 * @return {object|null}
+	 */
+	hunt(location){
+		let block = this.attempt(location, this.compareOffsets());
+
+		if(this.hasStats(block)){return block;}
+
+		// Nothing whatsoever, which is what an unhovered panel looks like. No
+		// offset answers that, and this is the common case during a sweep — the
+		// mouse spends most of its time between tiles — so it must stay cheap.
+		if(!block){return null;}
+
+		// Something is there but it gave up no numbers, so it is in the wrong
+		// place rather than empty. Hunt again, wider, and forget the offset that
+		// led here.
+		this.compareOffset = null;
+
+		let found = this.attempt(location, this.nearOffsets().concat(this.wideOffsets()));
+
+		return this.hasStats(found) ? found : block;
+	}
+
+	/**
+	 * @param  {object} block
+	 * @return {boolean}  whether anything numeric came out of it
+	 */
+	hasStats(block){
+		return !!(block && (block.stats.morale || block.stats.combat || block.stats.seafaring));
+	}
+
+	/**
+	 * Read the first of the given offsets that has anything on it
+	 * @param  {object} location
+	 * @param  {array} offsets
+	 * @return {object|null}
+	 */
+	attempt(location, offsets){
+		let fallback = null;
+
+		for(let i = 0; i < offsets.length; i++){
+			let offset = offsets[i];
+			let block = this.readBlock(location, offset);
+
+			if(!block){continue;}
+
+			// Keep the first thing that read at all, in case none of the offsets
+			// turns out to hold a whole block
+			if(!fallback){fallback = block;}
+
+			// A block with no stats in it is not the block: a wrong offset still
+			// picks up a stray digit from the rows above often enough to have
+			// stopped the hunt on the strength of it.
+			if(!this.hasStats(block)){continue;}
+
+			// Only an offset that produced a name is worth keeping. The name is
+			// far and away the most alignment-sensitive thing in the block —
+			// it is read at three exact baselines, where a stat gets a whole
+			// band and the level is read leniently — so a row or two out still
+			// yields numbers while the name silently disappears. Locking onto
+			// such an offset would leave every later read nameless.
+			if(block.type.found){this.compareOffset = offset;}
+
+			return block;
+		}
+
+		return fallback;
+	}
+
+	/**
 	 * Where to look for the Compare block, closest guess first
 	 *
 	 * It sits one panel below the Selected block — the two headings measured
 	 * 119 apart, and the block itself is 120 tall — but that was measured off a
 	 * screenshot that had been scaled down, so the exact row is worth hunting
 	 * for rather than asserting. Once one read succeeds the answer is known and
-	 * the hunt is over.
+	 * the hunt is over, until a read at it comes back empty — see hunt().
+	 *
+	 * The far offsets are for a Selected block that has grown: it lists one line
+	 * per trait its occupant carries, and a captain can carry four where a crew
+	 * member carries none, which pushes Compare a whole trait list further down.
 	 *
 	 * @return {array}
 	 */
@@ -228,11 +310,42 @@ export default class CrewReader
 			return [this.compareOffset];
 		}
 
+		return this.nearOffsets();
+	}
+
+	/**
+	 * The offsets either side of where the block usually is
+	 * @return {array}
+	 */
+	nearOffsets(){
 		let offsets = [];
 
 		for(let drift = 0; drift <= 6; drift++){
 			offsets.push(119 + drift);
 			if(drift){offsets.push(119 - drift);}
+		}
+
+		return offsets;
+	}
+
+	/**
+	 * The offsets for a Selected block that has grown
+	 *
+	 * It lists one line per trait its occupant carries, and a captain can carry
+	 * four where a crew member carries none, which pushes Compare a whole trait
+	 * list further down. Only paid for when the near offsets have already come
+	 * back empty — see hunt().
+	 *
+	 * @return {array}
+	 */
+	wideOffsets(){
+		let offsets = [];
+
+		for(let lines = 1; lines <= 4; lines++){
+			for(let drift = 0; drift <= 2; drift++){
+				offsets.push(119 + lines * 13 + drift);
+				if(drift){offsets.push(119 + lines * 13 - drift);}
+			}
 		}
 
 		return offsets;
@@ -314,11 +427,173 @@ export default class CrewReader
 	}
 
 	/**
+	 * Read the trait lines of whatever the Compare block is showing
+	 *
+	 * Not part of read(). The traits are only wanted for a captain, only once
+	 * their reading has settled, and answering costs an OCR pass per line —
+	 * where read() runs eight times a second for as long as a sweep lasts.
+	 *
+	 * Only ship modifier traits are looked for. They are the only ones that
+	 * change a number, and a captain's other traits — experience, survival —
+	 * would only be four more names to misread.
+	 *
+	 * @return {object|null}  {names, unmatched, none, attempts}, or null when
+	 *                        there was nothing to read
+	 */
+	readTraits(){
+		let location = this.location;
+
+		if(!location || !location.skin.traits){return null;}
+
+		let skin = location.skin;
+		let offset = this.compareOffset === null || this.compareOffset === undefined ? 119 : this.compareOffset;
+
+		let x = location.x + skin.details.x;
+		let y = location.y + skin.details.y + offset + skin.traits.top;
+		let width = skin.details.width;
+		let height = skin.traits.height;
+
+		let region = a1lib.bindregion(x, y, width, height);
+
+		if(!region){return null;}
+
+		let buffer = region.toData(x, y, width, height);
+		let result = {names: [], unmatched: 0, none: false, attempts: []};
+
+		for(let line = 0; line < skin.traits.lines; line++){
+			let baseline = skin.traits.first - skin.traits.top + line * skin.traits.step;
+			let attempts = this.readTraitLine(buffer, baseline);
+
+			// The first blank line ends the list. A gap in the middle of it is
+			// not something the panel draws.
+			if(!attempts.length){break;}
+
+			result.attempts = result.attempts.concat(attempts);
+
+			let match = CrewReader.matchTrait(attempts);
+
+			if(match === 'No Traits'){
+				result.none = true;
+				break;
+			}
+
+			if(match){result.names.push(match);} else {result.unmatched++;}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Everything the OCR can make of one trait line
+	 *
+	 * The line is centred, so where it starts depends on how long the name is.
+	 * Finding its left edge from the pixels costs one pass over a thin band and
+	 * saves reading the same line at sixty different x positions.
+	 *
+	 * @param  {ImageData} buffer
+	 * @param  {int} baseline
+	 * @return {array}
+	 */
+	readTraitLine(buffer, baseline){
+		let attempts = [];
+		let fonts = [this.fonts.mono, this.fonts.heavy];
+		let colours = ['parchment', 'cream', 'white', 'tan'];
+
+		for(let drift = 0; drift <= 2; drift++){
+			let rows = drift ? [baseline + drift, baseline - drift] : [baseline];
+
+			for(let r = 0; r < rows.length; r++){
+				let left = CrewReader.leftEdge(buffer, rows[r]);
+
+				if(left === null){continue;}
+
+				for(let f = 0; f < fonts.length; f++){
+					for(let c = 0; c < colours.length; c++){
+						let text = OCR.readLine(buffer, fonts[f], this.colors[colours[c]], left, rows[r], true, true).text;
+
+						if(text && attempts.indexOf(text) === -1){attempts.push(text);}
+					}
+				}
+			}
+		}
+
+		return attempts;
+	}
+
+	/**
+	 * Where the text on this baseline starts, or null if the line is blank
+	 * @param  {ImageData} buffer
+	 * @param  {int} baseline
+	 * @return {int|null}
+	 */
+	static leftEdge(buffer, baseline){
+		let top = Math.max(0, baseline - 8);
+		let bottom = Math.min(buffer.height - 1, baseline + 1);
+
+		for(let x = 0; x < buffer.width; x++){
+			for(let y = top; y <= bottom; y++){
+				let i = (y * buffer.width + x) * 4;
+				let r = buffer.data[i], g = buffer.data[i + 1], b = buffer.data[i + 2];
+
+				// Pale and bright, which the trait names are and the panel they
+				// are drawn on is not
+				if(Math.max(r, g, b) - Math.min(r, g, b) > 60){continue;}
+				if((r * 0.299 + g * 0.587 + b * 0.114) <= 140){continue;}
+
+				return x;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Name the ship modifier trait an OCR read is closest to
+	 *
+	 * Deliberately strict. A trait the reader invents is worse than a trait it
+	 * misses: the miss shows up as a slot the player fills in themselves, while
+	 * the invention quietly moves every success chance the app quotes.
+	 *
+	 * @param  {array} attempts
+	 * @return {string|null}  a trait name, 'No Traits', or null
+	 */
+	static matchTrait(attempts){
+		let candidates = traitValues.map(trait => trait.name).concat(['No Traits']);
+		let scores = {};
+
+		for(let i = 0; i < attempts.length; i++){
+			let attempt = CrewReader.normalise(attempts[i]);
+
+			if(attempt.length < 4){continue;}
+
+			for(let c = 0; c < candidates.length; c++){
+				let score = CrewReader.similarity(attempt, CrewReader.normalise(candidates[c]));
+
+				if(!(candidates[c] in scores) || score > scores[candidates[c]]){
+					scores[candidates[c]] = score;
+				}
+			}
+		}
+
+		let names = Object.keys(scores);
+
+		if(!names.length){return null;}
+
+		names.sort((a, b) => scores[b] - scores[a]);
+
+		// A clear winner, and clearly ahead of whatever came second
+		if(scores[names[0]] < 0.78){return null;}
+		if(names.length > 1 && scores[names[0]] - scores[names[1]] < 0.1){return null;}
+
+		return names[0];
+	}
+
+	/**
 	 * Get the value at the specified coordinates
-	 * @param  {ImageData} buffer 
-	 * @param  {int} x      
-	 * @param  {int} y      
-	 * @return {string}        
+	 * @param  {ImageData} buffer
+	 * @param  {int} x
+	 * @param  {int} y
+	 * @return {string}
 	 */
 	getStat(buffer, x, y){
 		// OCR.readLine wants the exact baseline, and a miss returns nothing at

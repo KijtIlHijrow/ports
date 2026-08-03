@@ -53,6 +53,10 @@
 
 				// Tiles the panel would not name, and what the OCR saw there
 				missed: {},
+
+				// Captains whose block gave up no stats, so the console says so
+				// once each rather than eight times a second
+				missedCaptains: {},
 			}
 		},
 
@@ -200,7 +204,50 @@
 				captain.seafaring = result.seafaring;
 				captain.level = result.level;
 
+				this.applyTraits(captain);
+
 				this.$root.save();
+			},
+
+			/**
+			 * Take a captain's ship modifier traits from the same panel
+			 *
+			 * Read here rather than in the reader's own loop: the traits only
+			 * matter for a captain and only once their reading has settled,
+			 * where the stats above are read eight times a second.
+			 *
+			 * A line that read as text but matched no ship modifier is taken to
+			 * be one of the traits that changes no number — a captain carries
+			 * four of any kind and most of them are experience or survival — so
+			 * it is not treated as a failure. It is logged, though: a garbled
+			 * "Tactician" looks exactly the same from here, and the console line
+			 * is what tells the two apart.
+			 *
+			 * @param  {Object} captain
+			 * @return {void}
+			 */
+			applyTraits(captain){
+				let read = this.reader.readTraits();
+
+				if(!read){return;}
+
+				console.log(
+					`CaptainTraits  ${captain.name}  matched ${read.names.join(', ') || '-'}`
+					+ `  unmatched ${read.unmatched}  says none ${read.none}`
+					+ `  saw ${JSON.stringify(read.attempts)}`
+				);
+
+				// Nothing definite came back, so leave alone whatever is set. A
+				// captain's traits are worth more than a guess: they are typed in
+				// by hand once and then multiply every stat the ship sails with.
+				if(read.none){
+					captain.traits = ['', '', '', ''];
+					return;
+				}
+
+				if(!read.names.length){return;}
+
+				captain.traits = read.names.concat(['', '', '', '']).slice(0, 4);
 			},
 
 			/**
@@ -296,6 +343,7 @@
 				this.grid = null;
 				this.portraits = [];
 				this.missed = {};
+				this.missedCaptains = {};
 
 				this.progress('Getting the portraits ready…');
 
@@ -350,7 +398,8 @@
 						this.captainsRead.forEach(c => {
 							lines.push(
 								`  row ${c.row}  ${String(c.name || '(unnamed)').padEnd(20)}`
-								+ ` lvl ${String(c.level).padEnd(4)} ${c.stats}`
+								+ ` lvl ${String(c.level).padEnd(4)} ${String(c.stats).padEnd(20)}`
+							+ ` traits ${c.traits || '-'}`
 							);
 						});
 					}
@@ -538,8 +587,23 @@
 				// A captain has stats. A block that gave up none of them is a
 				// panel that is not really there, whatever else was read off it.
 				if(!result.morale && !result.combat && !result.seafaring){
+					// Once per captain, not once per tick. Waiting for the panel
+					// to catch up and never reading it at all look identical on
+					// screen, and this is the line that separates them: it names
+					// the row it is reading and the offset it is reading at.
+					if(!this.missedCaptains[tile.row]){
+						this.missedCaptains[tile.row] = true;
+
+						console.log(
+							`CaptainRead  row ${tile.row}  no stats at compare offset ${this.reader.compareOffset}`
+							+ `  type "${result.type.name || ''}" found ${!!result.type.found} level ${result.level}`
+						);
+					}
+
 					return this.progress('Hold on the captain until their details show');
 				}
+
+				delete this.missedCaptains[tile.row];
 
 				// Settled twice running before it is credited, for the same
 				// reason the crew are: the panel takes a frame or two to follow
@@ -574,6 +638,7 @@
 					name: captain ? captain.name : '',
 					level: result.level,
 					stats: `${result.morale}/${result.combat}/${result.seafaring}/${result.speed}`,
+					traits: captain ? (captain.traits || []).filter(t => t).join(', ') : '',
 				};
 
 				let at = this.captainsRead.findIndex(read => read.row === tile.row);
