@@ -57,6 +57,10 @@
 				// Captains whose block gave up no stats, so the console says so
 				// once each rather than eight times a second
 				missedCaptains: {},
+
+				// Polls since the sweep began, for the things that are not worth
+				// doing on every one of them
+				ticks: 0,
 			}
 		},
 
@@ -344,6 +348,7 @@
 				this.portraits = [];
 				this.missed = {};
 				this.missedCaptains = {};
+				this.ticks = 0;
 
 				this.progress('Getting the portraits ready…');
 
@@ -473,10 +478,77 @@
 			},
 
 			/**
+			 * Draw the sweep's progress onto the roster itself
+			 *
+			 * Where the eyes already are. A count in the app answers "how many"
+			 * from the wrong side of the screen, and the question being asked
+			 * mid-sweep is "which ones have I done", which a number cannot
+			 * answer at all — it sends you back over tiles you have finished to
+			 * find the one you have not.
+			 *
+			 * Green is read and saved. Red was hovered and would not read, so
+			 * that a tile which is never going to go green — a locked slot, a
+			 * name the OCR cannot manage — is not mistaken for one that was
+			 * missed.
+			 *
+			 * @return {void}
+			 */
+			markProgress(){
+				this.ticks++;
+
+				if(!this.grid){return;}
+
+				// The marks outlive the gap between draws, so they hold steady
+				// rather than blinking at the polling rate
+				if(this.ticks % 4 !== 1){return;}
+
+				let done = a1lib.mixcolor(0, 255, 0);
+				let stuck = a1lib.mixcolor(255, 0, 0);
+
+				Object.keys(this.swept).forEach(key => {
+					let parts = key.split(':');
+
+					this.mark(Number(parts[0]), Number(parts[1]), done);
+				});
+
+				Object.keys(this.sweptCaptains).forEach(row => this.mark(1, Number(row), done));
+
+				Object.keys(this.missed).forEach(key => {
+					let parts = key.split(',');
+
+					this.mark(Number(parts[0]), Number(parts[1]), stuck);
+				});
+			},
+
+			/**
+			 * Outline one roster tile
+			 * @param  {int} column  1 based, as the grid counts
+			 * @param  {int} row
+			 * @param  {int} colour
+			 * @return {void}
+			 */
+			mark(column, row, colour){
+				let tile = this.grid.tile;
+
+				// Inset, so a tile's mark cannot be read as its neighbour's
+				alt1.overLayRect(
+					colour,
+					this.grid.x + (column - 1) * tile + 3,
+					this.grid.y + (row - 1) * tile + 3,
+					tile - 6,
+					tile - 6,
+					1000,
+					2
+				);
+			},
+
+			/**
 			 * Look at whatever the mouse is hovering, once per tick
 			 * @return {void}
 			 */
 			poll(){
+				this.markProgress();
+
 				if(!this.reader.read()){
 					// Moving off the roster entirely still frees the tile just
 					// left, which is how the last crew member of a sweep gets
