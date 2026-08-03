@@ -1,6 +1,6 @@
 <template>
 	<form v-if="model" @change="update" class="z-20 bg-nis-dark absolute bottom-0 left-0 right-0 p-4 text-white">
-		<div class="h-32 flex flex-col justify-between relative">
+		<div class="flex flex-col justify-between relative" style="min-height: 8rem;">
 
 			<button class="absolute top-0 right-0 text-white text-xl" style="top: -8px; right: -8px;" @click.prevent="deselect">
 				<i class="fas fa-chevron-circle-down"></i>
@@ -66,12 +66,38 @@
 					</div>
 				</div>
 			</div>
+
+			<!-- Traits, which multiply the whole ship's totals -->
+			<div class="mt-3 px-4" v-if="isCaptain">
+				<span class="text-sm opacity-75">Traits &mdash; hover each one in the game to name it</span>
+
+				<div class="flex flex-wrap -mx-1 mt-1">
+					<div class="w-1/2 px-1 mt-1" v-for="(trait, slot) in model.traits">
+						<select class="input text-sm" :value="trait" @change="setTrait(slot, $event.target.value)">
+							<option value="" class="text-black">Slot {{ slot + 1 }} &mdash; empty</option>
+							<option :value="t.name" v-for="t in traits" class="text-black">{{ t.label }}</option>
+						</select>
+					</div>
+				</div>
+
+				<p class="text-sm opacity-75 mt-1">
+					Only these change a stat. Any other trait the captain carries, leave the slot empty.
+				</p>
+			</div>
 		</div>
 	</form>
 </template>
 
 <script>
+	import traits from '../../ports/data/traits.json';
+
 	export default {
+
+		data(){
+			return {
+				traits: traits,
+			}
+		},
 
 		computed: {
 			model(){return this.$root.selected},
@@ -80,6 +106,17 @@
 		},
 
 		methods: {
+			/**
+			 * Fill one of the captain's trait slots
+			 * @param  {int} slot
+			 * @param  {string} name
+			 * @return {void}
+			 */
+			setTrait(slot, name){
+				// Writing to an index is the one array change Vue cannot see
+				this.$set(this.model.traits, slot, name);
+			},
+
 			/**
 			 * Whenever something is modified, save the data to localStorage
 			 * @return {void}
@@ -117,7 +154,10 @@
 			 * @return {void} 
 			 */
 			dismiss(){
-				if(this.isCaptain){this.model.name = '';}
+				if(this.isCaptain){
+					this.model.name = '';
+					this.model.traits = ['', '', '', ''];
+				}
 				else {this.model.type = this.$root.crewTypes[0];}
 
 				this.model.morale = 0;

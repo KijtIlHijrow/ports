@@ -1,0 +1,10 @@
+[
+	{ "name": "Leader", "label": "Leader — +1% morale", "morale": 1, "combat": 0, "seafaring": 0 },
+	{ "name": "Tactician", "label": "Tactician — +1% combat", "morale": 0, "combat": 1, "seafaring": 0 },
+	{ "name": "Seafriend", "label": "Seafriend — +1% seafaring", "morale": 0, "combat": 0, "seafaring": 1 },
+	{ "name": "Gloombringer", "label": "Gloombringer — -1% morale", "morale": -1, "combat": 0, "seafaring": 0 },
+	{ "name": "Liability", "label": "Liability — -1% combat", "morale": 0, "combat": -1, "seafaring": 0 },
+	{ "name": "Storm Magnet", "label": "Storm Magnet — -1% seafaring", "morale": 0, "combat": 0, "seafaring": -1 },
+	{ "name": "Lookout", "label": "Lookout — speed only", "morale": 0, "combat": 0, "seafaring": 0 },
+	{ "name": "Albatross", "label": "Albatross — speed only", "morale": 0, "combat": 0, "seafaring": 0 }
+]

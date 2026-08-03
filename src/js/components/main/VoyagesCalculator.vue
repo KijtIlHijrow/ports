@@ -69,6 +69,9 @@
 						morale: num(c.morale),
 						combat: num(c.combat),
 						seafaring: num(c.seafaring),
+
+						// Ship modifier traits, which multiply the ship's totals
+						traits: c.traits || [],
 					}
 				});
 
@@ -174,6 +177,7 @@
 							solidarity: result.solidarity,
 							solidarity_bearer: result.solidarity_bearer,
 							solidarity_value: result.solidarity_value,
+							multiplier: result.multiplier,
 							parts: {
 								ram: result.combination[2][0],
 								deckItem1: result.combination[2][1],

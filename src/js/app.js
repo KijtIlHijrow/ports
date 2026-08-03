@@ -89,6 +89,7 @@ const app = new Vue({
     			solidarity: 0,
     			solidarity_bearer: null,
     			solidarity_value: 0,
+    			multiplier: null,
     			parts: {
     				ram: null,
     				deckItem1: null,
@@ -168,8 +169,23 @@ const app = new Vue({
                 captains = JSON.stringify(captains);
     		}
 
-    		this.captains = JSON.parse(captains);
+    		this.captains = JSON.parse(captains).map(captain => this.refreshCaptain(captain));
     	},
+
+        /**
+         * Give a saved captain the four trait slots, which rosters saved before
+         * traits were read at all do not carry. A captain with no slots to fill
+         * would silently sail without a Tactician the player had told us about.
+         * @param  {Object} captain
+         * @return {Object}
+         */
+        refreshCaptain(captain){
+            if(!Array.isArray(captain.traits)){captain.traits = [];}
+
+            while(captain.traits.length < 4){captain.traits.push('');}
+
+            return captain;
+        },
         clearCaptains(){
             localStorage.removeItem('captains');
             this.loadCaptains();
@@ -281,6 +297,12 @@ const app = new Vue({
             }
 
             this.shipwright = JSON.parse(shipwright);
+
+            // The Luxurious shipwright was misspelled here for years, and a name
+            // the dropdown no longer offers shows as no shipwright at all
+            if(this.shipwright.name == 'Luxious shipwright'){
+                this.shipwright.name = 'Luxurious shipwright';
+            }
         },
 
         /**

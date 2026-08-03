@@ -1,4 +1,5 @@
 import solidarityValues from '../data/solidarity.json';
+import traitValues from '../data/traits.json';
 
 export default class PopCalculator
 {
@@ -11,6 +12,8 @@ export default class PopCalculator
 		this.hulls = hulls;
 		this.shipwright = shipwright;
 
+		this.applyModifiers(this.captains, shipwright);
+
 		// Generate the crew combinations
 		this.crewCombinations = Combinatorics.combination(this.crew, 5).toArray();
 
@@ -21,6 +24,61 @@ export default class PopCalculator
 
 		// Finally, generate all the possible combinations with 1 captain, 1 crew combination and 1 ship combination
 		this.combinations = Combinatorics.cartesianProduct(this.captains, this.crewCombinations, this.shipCombinations);
+	}
+
+	/**
+	 * Work out each captain's stat multiplier up front.
+	 *
+	 * Two things multiply a ship's finished totals rather than adding to them:
+	 * the Shipwright building, which boosts every ship in the port, and the
+	 * captain's own ship modifier traits — Leader, Tactician and Seafriend at
+	 * +1% each, Gloombringer, Liability and Storm Magnet at -1%, up to four
+	 * slots. They stack multiplicatively and the game then rounds the pair down
+	 * to a whole percent, so a Nautical Shipwright over a Seafriend captain is
+	 * 1.05 x 1.01 = 1.0605, which the ship sails as a flat 6%.
+	 *
+	 * This is the difference between what the ship's panel adds up to and the
+	 * success chance the voyage screen shows, and without it the answer here is
+	 * always the pessimistic one.
+	 *
+	 * The traits belong to the captain, so a single figure cannot stand for the
+	 * whole run — but there are only ever five captains, so it still keeps the
+	 * lookups out of the main loop.
+	 *
+	 * @param  {array} captains
+	 * @param  {object} shipwright
+	 * @return {void}
+	 */
+	applyModifiers(captains, shipwright)
+	{
+		let stats = ['morale', 'combat', 'seafaring'];
+
+		for(let i = 0; i < captains.length; i++){
+			let captain = captains[i];
+			let traits = captain.traits || [];
+
+			captain.multiplier = {};
+
+			for(let s = 0; s < stats.length; s++){
+				let stat = stats[s];
+
+				// A shipwright with no bonus is stored as 0, not as 1
+				let multiplier = shipwright && shipwright[stat] ? shipwright[stat] : 1;
+
+				traits.forEach(name => {
+					let trait = traitValues.find(trait => trait.name === name);
+
+					if(trait){
+						multiplier *= 1 + trait[stat] / 100;
+					}
+				});
+
+				// Down to a whole percent, as the game does. The nudge is for
+				// binary fractions: 1.05 x 1.01 lands a hair under 1.0605 as
+				// often as over it, and 6% must not become 5%.
+				captain.multiplier[stat] = 1 + Math.floor((multiplier - 1) * 100 + 1e-9) / 100;
+			}
+		}
 	}
 
 	/**
@@ -129,6 +187,13 @@ export default class PopCalculator
 	           	combat += combination[1].solidarity;
 	           	seafaring += combination[1].solidarity;
 
+	           	// The Shipwright and this captain's traits, worked out by
+	           	// applyModifiers(). They multiply the finished totals, so they
+	           	// belong here and not in any of the sums above.
+	           	morale = Math.floor(morale * combination[0]['multiplier']['morale']);
+	           	combat = Math.floor(combat * combination[0]['multiplier']['combat']);
+	           	seafaring = Math.floor(seafaring * combination[0]['multiplier']['seafaring']);
+
 	           	// Calculate the success chance
 	           	if(moraleTarget > 0){moraleSuccessChance = morale / moraleTarget * 100};
 	           	if(combatTarget > 0){combatSuccessChance = combat / combatTarget * 100};
@@ -148,17 +213,11 @@ export default class PopCalculator
 	           	}
            	}
 
-           	if(this.shipwright){
-           		let morale = this.shipwright.morale == 0 ? best.morale : Math.floor(best.morale * this.shipwright.morale);
-           		let combat = this.shipwright.combat == 0 ? best.combat : Math.floor(best.combat * this.shipwright.combat);
-           		let seafaring = this.shipwright.seafaring == 0 ? best.seafaring : Math.floor(best.seafaring * this.shipwright.seafaring);
-
-           		let moraleSuccessChance = moraleTarget == 0 ? 100 : morale / moraleTarget * 100;
-           		let combatSuccessChance = combatTarget == 0 ? 100 : combat / combatTarget * 100;
-           		let seafaringSuccessChance = seafaringTarget == 0 ? 100 : seafaring / seafaringTarget * 100;
-
-           		best.success_chance = Math.min(moraleSuccessChance, combatSuccessChance, seafaringSuccessChance);
-           	}
+           	// The Shipwright used to be applied here, to the winner alone. A
+           	// multiplier that differs by stat — a Nautical Shipwright is 3%
+           	// combat against 5% seafaring — can move which crew answer a
+           	// two-stat voyage best, so applying it after the search had already
+           	// picked could recommend a crew that was not the strongest one.
 
            	let time2 = performance.now();
 
@@ -168,6 +227,7 @@ export default class PopCalculator
 				'solidarity': best.combination ? best.combination[1].solidarity : 0,
 				'solidarity_bearer': best.combination ? best.combination[1].solidarityBearer : null,
 				'solidarity_value': best.combination ? best.combination[1].solidarityValue : 0,
+				'multiplier': best.combination ? best.combination[0].multiplier : null,
 				'execution_time': time2 - time1,
 			});
        });		

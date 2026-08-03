@@ -14,6 +14,10 @@
 			Solidarity +{{ $root.result.solidarity }} &mdash; put the {{ $root.result.solidarity_bearer }} in the first crew slot
 		</p>
 
+		<p class="text-sm mt-1 opacity-75" v-if="modifier">
+			Shipwright and traits {{ modifier }}
+		</p>
+
 		<div class="flex items-center mt-2">
 			<button class="text-white border border-white p-1" @click.prevent="toggleFind">
 				{{ finding ? 'Stop pointing' : 'Find on screen' }}
@@ -112,6 +116,31 @@
 				// for their being there and simply unrecognised
 				unrecognised: 0,
 			}
+		},
+
+		computed: {
+			/**
+			 * What the Shipwright and the captain's traits added, written the
+			 * way the ship reads it. Worth showing: it is the whole of the gap
+			 * between the stats on the ship's panel and the chance the voyage
+			 * screen quotes, and a wrong one here is quietly costing percent.
+			 * @return {string}
+			 */
+			modifier(){
+				let multiplier = this.$root.result.multiplier;
+
+				if(!multiplier){return '';}
+
+				let applied = ['morale', 'combat', 'seafaring'].filter(stat => {
+					return multiplier[stat] != 1;
+				}).map(stat => {
+					let percent = Math.round((multiplier[stat] - 1) * 100);
+
+					return `${percent > 0 ? '+' : ''}${percent}% ${stat}`;
+				});
+
+				return applied.join(', ');
+			},
 		},
 
 		mounted(){

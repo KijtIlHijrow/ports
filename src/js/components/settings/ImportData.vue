@@ -30,10 +30,15 @@
 
 						// An exported roster carries its own copy of each crew
 						// type, so an old file would bring back the portraits
-						// that were wrong when it was written.
-						this.$root[key] = key === 'crew'
-							? data.crew.map(member => this.$root.refreshType(member))
-							: data[key];
+						// that were wrong when it was written — and a file older
+						// than traits brings back captains with no slots to fill.
+						if(key === 'crew'){
+							this.$root.crew = data.crew.map(member => this.$root.refreshType(member));
+						} else if(key === 'captains'){
+							this.$root.captains = data.captains.map(captain => this.$root.refreshCaptain(captain));
+						} else {
+							this.$root[key] = data[key];
+						}
 					});
 
 					this.$root.save();

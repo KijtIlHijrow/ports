@@ -6,6 +6,11 @@
 				<select name="shipwright" id="shipwright" :value="shipwright.name" class="input" @change="update">
 					<option :value="sw.name" v-for="sw in shipwrights" class="text-black">{{ sw.name }}</option>
 				</select>
+
+				<p class="text-white text-sm mt-2 opacity-75">
+					Boosts the ship's finished totals, crew and captain included, so leaving this
+					behind what the port actually has costs whole percent of success chance.
+				</p>
 			</div>
 		</div>
 	</div>
@@ -25,7 +30,7 @@
 					{name: 'Renovated shipwright', morale: 1.03, combat: 1.03, seafaring: 1.03},
 					{name: 'Nautical shipwright', morale: 1.03, combat: 1.03, seafaring: 1.05},
 					{name: 'Warship shipwright', morale: 1.03, combat: 1.05, seafaring: 1.03},
-					{name: 'Luxious shipwright', morale: 1.05, combat: 1.03, seafaring: 1.03},
+					{name: 'Luxurious shipwright', morale: 1.05, combat: 1.03, seafaring: 1.03},
 					{name: 'Sleek shipwright', morale: 1.03, combat: 1.03, seafaring: 1.03},
 					{name: 'Ostentatious shipwright', morale: 1.08, combat: 1.05, seafaring: 1.05},
 					{name: 'Battleship shipwright', morale: 1.05, combat: 1.08, seafaring: 1.05},
