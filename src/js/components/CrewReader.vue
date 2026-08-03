@@ -512,7 +512,14 @@
 				if(!result.type.found || !result.type.name || result.type.name === 'captain'){
 					this.note(tile, result);
 
-					return this.progress('That one was not recognised — set its type by hand');
+					// The two say opposite things. A block still showing the
+					// captain the mouse has just left is the panel lagging, and
+					// waiting fixes it; a block showing this crew member under a
+					// name that would not read is the reader's problem, and only
+					// naming the type by hand fixes that.
+					return this.progress(result.type.name === 'captain'
+						? 'Still showing a captain — hold on the crew member a moment'
+						: 'That one was not recognised — set its type by hand');
 				}
 
 				delete this.missed[`${tile.column},${tile.row}`];
@@ -672,6 +679,16 @@
 					level: result.level,
 					captain: result.type.name === 'captain',
 				};
+
+				// Also said now rather than only in the report at the end of the
+				// sweep. A tile that will not read is worth knowing about while
+				// the mouse is still on it and the panel still says why.
+				console.log(
+					`TileRead  ${key}  ${this.missed[key].captain ? 'read as a captain' : 'no name'}`
+					+ `  stats ${this.missed[key].stats}  lvl ${result.level}`
+					+ `  compare offset ${this.reader.compareOffset}`
+					+ `  saw ${JSON.stringify(this.missed[key].attempts)}`
+				);
 			},
 
 			/**
