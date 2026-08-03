@@ -1050,10 +1050,16 @@ export default class RosterScanner
 				// being asked for.
 				if(seen && (!tile.type || seen.type === tile.type)){
 					// Hovered, so this is who it is whether or not the level
-					// came through with it
+					// came through with it.
+					//
+					// Unless it was never hovered at all but worked out from
+					// having watched them go aboard, which is good enough to
+					// strike a pick off but not to say "take them off": that
+					// instruction costs a wrong click each way, so a deduction
+					// waits for the tile to settle like any unhovered one.
 					return seen.type === 'Empty'
 						? null
-						: {type: seen.type, level: seen.level, tile: tile, certain: true};
+						: {type: seen.type, level: seen.level, tile: tile, certain: !seen.deduced};
 				}
 
 				if(!tile.type || tile.type === 'Empty'){return null;}

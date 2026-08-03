@@ -81,6 +81,13 @@
 				identified: {},
 				steady: {},
 				hovering: null,
+
+				// Crew watched going aboard: settled under the mouse, and gone
+				// from the roster the moment it reflowed. The ship's row cannot
+				// say which of several identical crew is up there, and this is
+				// the only thing on screen that ever knew
+				sailed: [],
+
 				pending: null,
 				agreeing: 0,
 				lastReport: '',
@@ -146,6 +153,7 @@
 				this.identified = {};
 				this.steady = {};
 				this.hovering = null;
+				this.sailed = [];
 				this.pending = null;
 				this.agreeing = 0;
 				this.lastReport = '';
@@ -224,8 +232,15 @@
 				// had just produced — so the same crew member had to be hovered
 				// again and again. Only a tile that is recognised as somebody
 				// *different* counts as movement.
+				//
+				// The two halves of the grid move for different reasons, so they
+				// are watched apart. A reflow of the roster leaves the ship's row
+				// alone — the crew already up there keep their slots — and wiping
+				// what hovering had established about them threw the answer away
+				// on every single click, which is the one moment it is needed.
 				let moved = false;
 				let named = {};
+				let shifted = [];
 
 				scan.tiles.forEach(tile => {
 					if(!tile.type){return;}
@@ -234,21 +249,50 @@
 
 					named[key] = tile.type;
 
-					if(this.layout[key] && this.layout[key] !== tile.type){moved = true;}
+					if(!this.layout[key] || this.layout[key] === tile.type){return;}
+
+					if(tile.row === 1){shifted.push({key: key, was: this.layout[key], now: tile.type});}
+					else {moved = true;}
 				});
+
+				// A roster tile settled under the mouse and swept out from under
+				// it has been clicked, and clicking is what puts somebody on the
+				// ship. Nothing up there says which of several identical crew
+				// went — a portrait in the ship's row gives a type and no level —
+				// so without this the app forgets the very crew member it had
+				// just identified for you, the instant you act on what it said.
+				if(moved && this.hovering && this.hovering.row >= 2 && Number(this.hovering.level)){
+					this.sailed.push({type: this.hovering.type, level: Number(this.hovering.level)});
+					this.note(`${this.hovering.type} level ${this.hovering.level} has gone aboard`);
+				}
 
 				if(moved){
 					this.layout = named;
 					this.confirmed = {};
-					this.onShip = {};
-					this.identified = {};
-					this.steady = {};
+
+					// The ship's row is not what moved, so what it has said about
+					// itself still holds
+					this.identified = this.aboutTheShip(this.identified);
 
 					// Whoever was under the mouse may not be there any more
 					this.hovering = null;
 				} else {
 					this.layout = Object.assign({}, this.layout, named);
 				}
+
+				// A ship slot that now reads as somebody else has emptied of
+				// whoever we had in it, deductions included
+				shifted.forEach(change => {
+					delete this.onShip[change.key];
+					delete this.identified[change.key];
+					delete this.steady[change.key];
+
+					if(change.now !== 'Empty'){return;}
+
+					let at = this.sailed.findIndex(gone => gone.type === change.was);
+
+					if(at !== -1){this.sailed.splice(at, 1);}
+				});
 
 				// Read the panel before matching, not after. The tile under the
 				// mouse carries the hover glow, which can put its portrait out
@@ -277,6 +321,8 @@
 					held.type = known.type;
 					held.level = held.level || known.level;
 				});
+
+				this.attribute(scan);
 
 				let found = scanner.find(scan, picks, RosterScanner.aboard(scan, this.onShip));
 
@@ -398,9 +444,15 @@
 				// sending you after somebody who has already sailed.
 				if(onShip){
 					let held = this.onShip[key];
+					let news = !held || held.type !== result.type.name || held.level !== level;
 
-					if(!held || held.type !== result.type.name || held.level !== level){
-						this.onShip[key] = {type: result.type.name, level: level};
+					// Written every time, not only when it is news: a seat worked
+					// out from watching them go aboard reads the same as this one
+					// but is held less firmly, and having now been looked at it
+					// should be held as firmly as anything else up there.
+					this.onShip[key] = {type: result.type.name, level: level};
+
+					if(news){
 						this.note(`${key} aboard: ${result.type.name} level ${result.level}`);
 					}
 				}
@@ -413,6 +465,119 @@
 					combat: result.combat,
 					seafaring: result.seafaring,
 				};
+			},
+
+			/**
+			 * Only what was said about the ship's own row
+			 * @param  {object} answers  keyed "column,row"
+			 * @return {object}
+			 */
+			aboutTheShip(answers){
+				let kept = {};
+
+				Object.keys(answers).forEach(key => {
+					if(key.split(',')[1] === '1'){kept[key] = answers[key];}
+				});
+
+				return kept;
+			},
+
+			/**
+			 * Sit the crew we watched go aboard in the ship's row
+			 *
+			 * A portrait up there names a type and stops, so a voyage wanting two
+			 * Brimhaven Pirates at different levels cannot tell which of them is
+			 * already sailing. Both candidates in the roster then sit amber for
+			 * ever, each one answering "one of these" and neither "this one" —
+			 * and every hover spent on them is spent on the wrong tile, because
+			 * the one that could answer is up in the ship's row.
+			 *
+			 * Hovering it settles that. So does having watched them go. A hover
+			 * still wins where the two disagree, being a reading rather than a
+			 * deduction, and a deduced seat never carries the certainty that
+			 * would let it tell you to take somebody off without settling first.
+			 *
+			 * @param  {object} scan
+			 * @return {void}
+			 */
+			attribute(scan){
+				if(!this.sailed.length){return;}
+
+				let row = scan.tiles.filter(tile => tile.row === 1);
+				let seatOf = tile => this.onShip[`${tile.column},${tile.row}`];
+
+				// A deduced seat gives way to anything the screen says outright
+				row.forEach(tile => {
+					let key = `${tile.column},${tile.row}`;
+					let seen = seatOf(tile);
+
+					if(!seen || !seen.deduced){return;}
+
+					// The slot has emptied, so they are not up there after all —
+					// taken off again, most likely. A slot that merely cannot be
+					// recognised says nothing either way and is left alone.
+					if(tile.type === 'Empty'){
+						delete this.onShip[key];
+
+						let at = this.sailed.findIndex(gone => gone.type === seen.type
+							&& Number(gone.level) === Number(seen.level));
+
+						if(at !== -1){this.sailed.splice(at, 1);}
+
+						return;
+					}
+
+					// Hovering has found that same crew member in a slot of their
+					// own. A reading outranks a deduction, and leaving both would
+					// count one crew member aboard as two.
+					let read = row.some(other => {
+						let held = seatOf(other);
+
+						return held && !held.deduced && held.type === seen.type
+							&& Number(held.level) === Number(seen.level);
+					});
+
+					if(read){delete this.onShip[key];}
+				});
+
+				// Never claim more of the ship than the ship is holding. Counted
+				// off the screen and off hovering only — a deduced seat propping
+				// up the count that justifies it would never let itself go.
+				let held = row.filter(tile => {
+					let seen = seatOf(tile);
+
+					return ((seen && !seen.deduced) ? seen.type : tile.type) !== 'Empty';
+				}).length;
+
+				if(this.sailed.length > held){
+					this.sailed = this.sailed.slice(this.sailed.length - held);
+				}
+
+				// Anyone the ship's row already accounts for needs no seat of
+				// their own, or they would be counted aboard twice over
+				let spoken = row.map(seatOf).filter(seen => seen);
+
+				this.sailed.forEach(gone => {
+					let at = spoken.findIndex(seen => seen.type === gone.type
+						&& Number(seen.level) === Number(gone.level));
+
+					if(at !== -1){return spoken.splice(at, 1);}
+
+					let free = row.filter(tile => !seatOf(tile));
+
+					// Their own portrait first, a slot nobody could name second.
+					// The ship's row draws its tiles differently enough that most
+					// crew have to be seen up there before they are recognised
+					// there, so unrecognised is what an arrival usually looks like.
+					let seat = free.find(tile => tile.type === gone.type)
+						|| free.find(tile => !tile.type);
+
+					if(!seat){return;}
+
+					this.onShip[`${seat.column},${seat.row}`] = {
+						type: gone.type, level: gone.level, deduced: true,
+					};
+				});
 			},
 
 			/**
