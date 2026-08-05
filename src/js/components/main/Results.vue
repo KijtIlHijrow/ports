@@ -15,7 +15,7 @@
 		</p>
 
 		<p class="text-sm mt-1 opacity-75" v-if="modifier">
-			Shipwright and traits would be {{ modifier }} &mdash; not counted, the game does not apply them
+			Shipwright and traits {{ modifier }}
 		</p>
 
 		<div class="mt-2" v-if="workings">
@@ -25,9 +25,8 @@
 
 			<div v-if="showWorkings" class="text-xs mt-2">
 				<p class="mb-2">
-					Open the ship's panel and read its Morale / Combat / Seafaring.
-					It should be <b>{{ row('base') }}</b> if the Shipwright is not counted in it,
-					or <b>{{ row('boosted') }}</b> if it is. Whichever it matches names the reading.
+					Open the ship's panel: it should read <b>{{ row('panel') }}</b>.
+					If it does not, a stat below is being read wrong, and the answer is wrong with it.
 				</p>
 
 				<table class="w-full mb-2">
@@ -45,27 +44,11 @@
 					</tr>
 				</table>
 
-				<table class="w-full">
-					<tr class="opacity-75">
-						<th class="text-left font-normal">Reading</th>
-						<th class="text-right font-normal">Morale</th>
-						<th class="text-right font-normal">Combat</th>
-						<th class="text-right font-normal">Seafaring</th>
-						<th class="text-right font-normal">Voyage</th>
-					</tr>
-					<tr v-for="reading in readings">
-						<td class="text-left">{{ reading.label }}</td>
-						<td class="text-right">{{ reading.morale }}</td>
-						<td class="text-right">{{ reading.combat }}</td>
-						<td class="text-right">{{ reading.seafaring }}</td>
-						<td class="text-right font-bold">{{ reading.success }}%</td>
-					</tr>
-				</table>
 
 				<p class="mt-2 opacity-75">
 					Targets {{ workings.targets.morale }} / {{ workings.targets.combat }} / {{ workings.targets.seafaring }}.
 					Shipwright: {{ workings.shipwright || 'none' }}.
-					Captain traits: {{ workings.traits.length ? workings.traits.join(', ') : 'none' }}.
+					Captain traits: {{ workings.traits.length ? workings.traits.join(', ') : 'none read' }}.
 					<span v-if="workings.solidarity">
 						Solidarity from the {{ workings.solidarity_bearer }} at {{ workings.solidarity_value }} a type.
 					</span>
@@ -229,8 +212,10 @@
 					{label: 'Crew', key: 'from_crew'},
 					{label: 'Ship parts', key: 'from_parts'},
 					{label: 'Added up', key: 'base'},
-					{label: 'With the Shipwright', key: 'boosted'},
 					{label: 'Solidarity', key: 'solidarity'},
+					{label: 'Ship panel', key: 'panel'},
+					{label: 'Solidarity again', key: 'solidarity'},
+					{label: 'Voyage', key: 'voyage'},
 				].map(line => {
 					return {
 						label: line.label,
@@ -241,29 +226,6 @@
 				});
 			},
 
-			/**
-			 * The competing accounts of where the Shipwright and Solidarity land,
-			 * each with the voyage chance it implies. One of them matches the
-			 * game and the other two are why this app has ever been wrong.
-			 * @return {array}
-			 */
-			readings(){
-				if(!this.workings){return [];}
-
-				return [
-					{label: 'Solidarity only', key: 'no_multiplier'},
-					{label: 'Shipwright, then Solidarity', key: 'boosted_then_solidarity'},
-					{label: 'Shipwright over both (this app)', key: 'everything'},
-				].map(reading => {
-					return {
-						label: reading.label,
-						morale: this.workings.stats.morale.totals[reading.key],
-						combat: this.workings.stats.combat.totals[reading.key],
-						seafaring: this.workings.stats.seafaring.totals[reading.key],
-						success: this.workings.success[reading.key],
-					};
-				});
-			},
 		},
 
 		mounted(){

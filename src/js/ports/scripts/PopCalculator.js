@@ -187,21 +187,30 @@ export default class PopCalculator
 	           	combat += combination[1].solidarity;
 	           	seafaring += combination[1].solidarity;
 
-	           	// The Shipwright is deliberately not applied here. Its own
-	           	// description says it boosts a ship's total stats, crew and
-	           	// captain included, so this multiplied them — and measured
-	           	// against the game it is not there. Three stats on two ships:
-	           	// a ship reading 1527/1815/1550 with a Refitted shipwright and
-	           	// +150 Solidarity sailed at 69/81/70, which is the untouched sum
-	           	// plus Solidarity to the percent, and the seafaring column came
-	           	// out exactly on a total that is 1100 of ship parts. A 2% boost
-	           	// would have shown as 30 and it showed as nothing.
+	           	// The Shipwright and this captain's traits, worked out by
+	           	// applyModifiers(). Solidarity has already gone in above, and it
+	           	// goes in before this rather than after: measured against a ship
+	           	// summing to 1348/1630/1370 under a Refitted shipwright with +150
+	           	// Solidarity, the panel read 1527/1815/1550, which is
+	           	// floor((sum + 150) x 1.02) exactly on all three. Multiplying the
+	           	// sum alone and adding Solidarity after lands three short of each.
+	           	morale = Math.floor(morale * combination[0]['multiplier']['morale']);
+	           	combat = Math.floor(combat * combination[0]['multiplier']['combat']);
+	           	seafaring = Math.floor(seafaring * combination[0]['multiplier']['seafaring']);
+
+	           	// And Solidarity again, which is not a typo. The number above is
+	           	// what the ship's panel shows; the voyage screen then quotes a
+	           	// percentage of that plus Solidarity a second time. The same ship
+	           	// sailed at 69/81/70 against 2400, and 1527+150, 1815+150 and
+	           	// 1550+150 over 2400 are 69.87, 81.87 and 70.83. Every other way
+	           	// of arranging these pieces misses at least one of the three.
 	           	//
-	           	// Whether the boost is already inside the stats the game quotes
-	           	// or simply does not reach voyage chance, adding it here is
-	           	// counting it twice, and it was costing 2% of optimism a voyage.
-	           	// applyModifiers() still runs, because the workings put what it
-	           	// would have done beside what the game did.
+	           	// Why the game counts it twice is not known here. It is measured,
+	           	// not explained, and it is measured on one crew — a voyage with no
+	           	// Solidarity bearer aboard would be the thing that falsifies it.
+	           	morale += combination[1].solidarity;
+	           	combat += combination[1].solidarity;
+	           	seafaring += combination[1].solidarity;
 
 	           	// Calculate the success chance
 	           	if(moraleTarget > 0){moraleSuccessChance = morale / moraleTarget * 100};
@@ -288,7 +297,9 @@ export default class PopCalculator
 
 		let workings = {
 			captain: captain.name,
-			traits: (captain.traits || []).slice(),
+			// Filtered: a captain carries four trait slots whether or not they
+			// have four traits, and the empty ones were showing as ", , , ."
+			traits: (captain.traits || []).filter(trait => trait),
 			crew: crew.map(member => member.type ? member.type.name : member.name),
 			parts: parts.map(part => part.name),
 			shipwright: this.shipwright ? this.shipwright.name : null,
@@ -310,49 +321,33 @@ export default class PopCalculator
 			let multiplier = captain.multiplier[stat];
 			let solidarity = crew.solidarity;
 
-			// What the ship's panel ought to read under each reading of it
-			let boosted = Math.floor(base * multiplier);
-
-			// The three ways the pieces can go together. `everything` is what
-			// this calculator does today; the other two are what the voyage
-			// screen would say if the Shipwright is already inside the panel, or
-			// if it is not landing on voyage stats at all.
-			let everything = Math.floor((base + solidarity) * multiplier);
-			let boostedThenSolidarity = boosted + solidarity;
-			let noMultiplier = base + solidarity;
+			// What the ship's panel should read, and what the voyage screen
+			// should quote a percentage of. Printed as two separate numbers on
+			// purpose: the panel is checkable against the game in one glance,
+			// so a wrong stat shows up as a wrong panel rather than as a wrong
+			// answer nobody can trace.
+			let panel = Math.floor((base + solidarity) * multiplier);
+			let voyage = panel + solidarity;
 
 			workings.stats[stat] = {
 				from_captain: fromCaptain,
 				from_crew: fromCrew,
 				from_parts: fromParts,
 				base: base,
-				boosted: boosted,
 				multiplier: multiplier,
 				solidarity: solidarity,
-				totals: {
-					everything: everything,
-					boosted_then_solidarity: boostedThenSolidarity,
-					no_multiplier: noMultiplier,
-				},
-				percentages: {
-					everything: percent(everything, targets[stat]),
-					boosted_then_solidarity: percent(boostedThenSolidarity, targets[stat]),
-					no_multiplier: percent(noMultiplier, targets[stat]),
-				},
+				panel: panel,
+				voyage: voyage,
+				percent: percent(voyage, targets[stat]),
 			};
 		}
 
-		// The voyage takes the worst of the three stats, so each reading's
-		// answer is its own minimum — not the minimum of any one stat
-		workings.success = {};
+		// The voyage is only as good as its worst stat
+		let chances = stats
+			.map(stat => workings.stats[stat].percent)
+			.filter(chance => chance !== null);
 
-		['everything', 'boosted_then_solidarity', 'no_multiplier'].forEach(reading => {
-			let chances = stats
-				.map(stat => workings.stats[stat].percentages[reading])
-				.filter(chance => chance !== null);
-
-			workings.success[reading] = chances.length ? Math.min(Math.floor(Math.min(...chances)), 100) : 100;
-		});
+		workings.success = chances.length ? Math.min(Math.floor(Math.min(...chances)), 100) : 100;
 
 		return workings;
 	}
