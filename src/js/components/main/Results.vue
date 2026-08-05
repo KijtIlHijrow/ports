@@ -525,6 +525,29 @@
 				});
 
 				if(!found.marks.length && !found.missing.length && !found.spares.length){
+					// A pick struck off by deduction is not the same as one
+					// struck off by reading the tile. Watching a crew member
+					// leave the roster seats them in whichever slot could not be
+					// named, and an empty seat in the ship's row is drawn from
+					// art the scanner does not always place — so an empty seat
+					// reads as unnamed, takes the deduction, and finishes the job
+					// on paper while the slot is still sitting there empty.
+					//
+					// Keeps pointing rather than stopping: the seat is settled
+					// the moment anything about it changes, and stopping would
+					// leave a wrong answer standing as the final word.
+					let unread = (found.aboard || []).filter(entry => entry.matched && !entry.certain);
+
+					if(unread.length){
+						let seats = unread.map(entry => entry.tile ? entry.tile.column - 1 : '?');
+
+						this.message = `All aboard, but ${seats.length > 1 ? 'seats' : 'seat'}`
+							+ ` ${seats.join(', ')} ${seats.length > 1 ? 'were' : 'was'} never read`
+							+ ` — check ${seats.length > 1 ? 'they are' : 'it is'} not empty`;
+
+						return;
+					}
+
 					// Said after stopping, not before: stopping clears the
 					// message, and this is the one stop that is an answer rather
 					// than an interruption. Setting it first left the button
