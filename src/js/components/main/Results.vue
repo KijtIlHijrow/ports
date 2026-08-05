@@ -76,15 +76,15 @@
 				</table>
 
 				<p class="mt-1 opacity-75">
-					Captains are filed by which row of the left-hand column they were read in, not by
-					name, so a column that has reordered since puts one captain's stats under another's
-					name. If the numbers against a name are not that captain's, that is what happened.
+					Read by the name on the panel, so they stay with the right captain when the column
+					reorders. A captain never swept has nothing here, and one swept before this was
+					read by row instead &mdash; sweep them again if their numbers look like somebody else's.
 				</p>
 
 				<p class="mt-1 opacity-75">
-					Whichever reading matches the voyage screen is the one to keep &mdash; but check the
-					crew above are the five actually aboard first, or the two numbers are answering
-					different questions.
+					Before reading this against the game, check the ship is carrying this captain and
+					these five crew. Where it is not, the panel above and the panel on screen are
+					answering different questions and are not meant to agree.
 				</p>
 			</div>
 		</div>
