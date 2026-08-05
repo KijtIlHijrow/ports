@@ -525,8 +525,14 @@
 				});
 
 				if(!found.marks.length && !found.missing.length && !found.spares.length){
+					// Said after stopping, not before: stopping clears the
+					// message, and this is the one stop that is an answer rather
+					// than an interruption. Setting it first left the button
+					// flipping back to "Find on screen" with nothing beside it,
+					// which reads exactly like a button that does not work.
+					this.stopFinding();
 					this.message = 'All aboard — nothing left to click';
-					return this.stopFinding();
+					return;
 				}
 
 				scanner.show(found.marks, 0.7, found.spares);
