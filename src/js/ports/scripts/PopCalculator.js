@@ -187,12 +187,21 @@ export default class PopCalculator
 	           	combat += combination[1].solidarity;
 	           	seafaring += combination[1].solidarity;
 
-	           	// The Shipwright and this captain's traits, worked out by
-	           	// applyModifiers(). They multiply the finished totals, so they
-	           	// belong here and not in any of the sums above.
-	           	morale = Math.floor(morale * combination[0]['multiplier']['morale']);
-	           	combat = Math.floor(combat * combination[0]['multiplier']['combat']);
-	           	seafaring = Math.floor(seafaring * combination[0]['multiplier']['seafaring']);
+	           	// The Shipwright is deliberately not applied here. Its own
+	           	// description says it boosts a ship's total stats, crew and
+	           	// captain included, so this multiplied them — and measured
+	           	// against the game it is not there. Three stats on two ships:
+	           	// a ship reading 1527/1815/1550 with a Refitted shipwright and
+	           	// +150 Solidarity sailed at 69/81/70, which is the untouched sum
+	           	// plus Solidarity to the percent, and the seafaring column came
+	           	// out exactly on a total that is 1100 of ship parts. A 2% boost
+	           	// would have shown as 30 and it showed as nothing.
+	           	//
+	           	// Whether the boost is already inside the stats the game quotes
+	           	// or simply does not reach voyage chance, adding it here is
+	           	// counting it twice, and it was costing 2% of optimism a voyage.
+	           	// applyModifiers() still runs, because the workings put what it
+	           	// would have done beside what the game did.
 
 	           	// Calculate the success chance
 	           	if(moraleTarget > 0){moraleSuccessChance = morale / moraleTarget * 100};

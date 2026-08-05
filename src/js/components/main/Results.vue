@@ -15,7 +15,7 @@
 		</p>
 
 		<p class="text-sm mt-1 opacity-75" v-if="modifier">
-			Shipwright and traits {{ modifier }}
+			Shipwright and traits would be {{ modifier }} &mdash; not counted, the game does not apply them
 		</p>
 
 		<div class="mt-2" v-if="workings">
