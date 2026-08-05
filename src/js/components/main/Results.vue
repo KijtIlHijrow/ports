@@ -18,6 +18,69 @@
 			Shipwright and traits {{ modifier }}
 		</p>
 
+		<div class="mt-2" v-if="workings">
+			<button class="text-white border border-white p-1 text-sm" @click.prevent="showWorkings = !showWorkings">
+				{{ showWorkings ? 'Hide workings' : 'Workings' }}
+			</button>
+
+			<div v-if="showWorkings" class="text-xs mt-2">
+				<p class="mb-2">
+					Open the ship's panel and read its Morale / Combat / Seafaring.
+					It should be <b>{{ row('base') }}</b> if the Shipwright is not counted in it,
+					or <b>{{ row('boosted') }}</b> if it is. Whichever it matches names the reading.
+				</p>
+
+				<table class="w-full mb-2">
+					<tr class="opacity-75">
+						<th class="text-left font-normal">&nbsp;</th>
+						<th class="text-right font-normal">Morale</th>
+						<th class="text-right font-normal">Combat</th>
+						<th class="text-right font-normal">Seafaring</th>
+					</tr>
+					<tr v-for="line in breakdown">
+						<td class="text-left">{{ line.label }}</td>
+						<td class="text-right">{{ line.morale }}</td>
+						<td class="text-right">{{ line.combat }}</td>
+						<td class="text-right">{{ line.seafaring }}</td>
+					</tr>
+				</table>
+
+				<table class="w-full">
+					<tr class="opacity-75">
+						<th class="text-left font-normal">Reading</th>
+						<th class="text-right font-normal">Morale</th>
+						<th class="text-right font-normal">Combat</th>
+						<th class="text-right font-normal">Seafaring</th>
+						<th class="text-right font-normal">Voyage</th>
+					</tr>
+					<tr v-for="reading in readings">
+						<td class="text-left">{{ reading.label }}</td>
+						<td class="text-right">{{ reading.morale }}</td>
+						<td class="text-right">{{ reading.combat }}</td>
+						<td class="text-right">{{ reading.seafaring }}</td>
+						<td class="text-right font-bold">{{ reading.success }}%</td>
+					</tr>
+				</table>
+
+				<p class="mt-2 opacity-75">
+					Targets {{ workings.targets.morale }} / {{ workings.targets.combat }} / {{ workings.targets.seafaring }}.
+					Shipwright: {{ workings.shipwright || 'none' }}.
+					Captain traits: {{ workings.traits.length ? workings.traits.join(', ') : 'none' }}.
+					<span v-if="workings.solidarity">
+						Solidarity from the {{ workings.solidarity_bearer }} at {{ workings.solidarity_value }} a type.
+					</span>
+				</p>
+
+				<p class="mt-1 opacity-75">Crew read as: {{ workings.crew.join(', ') }}.</p>
+
+				<p class="mt-1 opacity-75">
+					Whichever reading matches the voyage screen is the one to keep &mdash; but check the
+					crew above are the five actually aboard first, or the two numbers are answering
+					different questions.
+				</p>
+			</div>
+		</div>
+
 		<div class="flex items-center mt-2">
 			<button class="text-white border border-white p-1" @click.prevent="toggleFind">
 				{{ finding ? 'Stop pointing' : 'Find on screen' }}
@@ -71,6 +134,10 @@
 		data(){
 			return {
 				show: false,
+
+				// The sums behind the answer, folded away until asked for. Only
+				// worth opening when the voyage screen and this disagree
+				showWorkings: false,
 
 				// Pointing runs until it is stopped, because clicking a crew
 				// member rearranges the roster underneath it
@@ -141,6 +208,62 @@
 
 				return applied.join(', ');
 			},
+
+			/**
+			 * The sums the calculator kept for the winning combination
+			 * @return {object|null}
+			 */
+			workings(){
+				return this.$root.result ? this.$root.result.workings : null;
+			},
+
+			/**
+			 * Where each stat came from, in the order they are added up
+			 * @return {array}
+			 */
+			breakdown(){
+				if(!this.workings){return [];}
+
+				return [
+					{label: 'Captain', key: 'from_captain'},
+					{label: 'Crew', key: 'from_crew'},
+					{label: 'Ship parts', key: 'from_parts'},
+					{label: 'Added up', key: 'base'},
+					{label: 'With the Shipwright', key: 'boosted'},
+					{label: 'Solidarity', key: 'solidarity'},
+				].map(line => {
+					return {
+						label: line.label,
+						morale: this.workings.stats.morale[line.key],
+						combat: this.workings.stats.combat[line.key],
+						seafaring: this.workings.stats.seafaring[line.key],
+					};
+				});
+			},
+
+			/**
+			 * The competing accounts of where the Shipwright and Solidarity land,
+			 * each with the voyage chance it implies. One of them matches the
+			 * game and the other two are why this app has ever been wrong.
+			 * @return {array}
+			 */
+			readings(){
+				if(!this.workings){return [];}
+
+				return [
+					{label: 'Solidarity only', key: 'no_multiplier'},
+					{label: 'Shipwright, then Solidarity', key: 'boosted_then_solidarity'},
+					{label: 'Shipwright over both (this app)', key: 'everything'},
+				].map(reading => {
+					return {
+						label: reading.label,
+						morale: this.workings.stats.morale.totals[reading.key],
+						combat: this.workings.stats.combat.totals[reading.key],
+						seafaring: this.workings.stats.seafaring.totals[reading.key],
+						success: this.workings.success[reading.key],
+					};
+				});
+			},
 		},
 
 		mounted(){
@@ -156,6 +279,20 @@
 		},
 
 		methods: {
+			/**
+			 * One line of the workings, written the way the ship's panel writes
+			 * its three numbers, so the two can be read side by side
+			 * @param  {string} key
+			 * @return {string}
+			 */
+			row(key){
+				if(!this.workings){return '';}
+
+				return ['morale', 'combat', 'seafaring'].map(stat => {
+					return this.workings.stats[stat][key];
+				}).join(' / ');
+			},
+
 			toggleFind(){
 				return this.finding ? this.stopFinding() : this.startFinding();
 			},

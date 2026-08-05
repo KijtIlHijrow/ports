@@ -228,8 +228,123 @@ export default class PopCalculator
 				'solidarity_bearer': best.combination ? best.combination[1].solidarityBearer : null,
 				'solidarity_value': best.combination ? best.combination[1].solidarityValue : 0,
 				'multiplier': best.combination ? best.combination[0].multiplier : null,
+				'workings': best.combination ? this.explain(best.combination, moraleTarget, combatTarget, seafaringTarget) : null,
 				'execution_time': time2 - time1,
 			});
-       });		
+       });
+	}
+
+	/**
+	 * Take the winning combination apart again and show the working.
+	 *
+	 * There are two things the ship's panel could be showing and no way to tell
+	 * them apart from the outside. The Shipwright's own description says it
+	 * boosts "the ship's total stats (including those added by the crew and
+	 * captain)", which leaves it open whether the panel quotes the total before
+	 * that boost or after it — and whether Solidarity, which the panel never
+	 * shows at all, goes in before the boost or after. Every reading agrees on
+	 * the parts and disagrees on the answer, which is exactly the situation
+	 * where guessing is worthless and one screenshot settles it.
+	 *
+	 * So rather than pick, this hands back all three totals with the sums that
+	 * produced them. Compare `base` and `boosted` against the two numbers the
+	 * ship's panel is showing and only one of them can be right; whichever it is
+	 * names the reading, and the matching percentage should then be the one the
+	 * voyage screen quotes.
+	 *
+	 * Recomputed here for the winner alone, not gathered in the main loop —
+	 * there are hundreds of thousands of combinations and only one of them ever
+	 * needs explaining.
+	 *
+	 * @param  {array}  combination
+	 * @param  {number} moraleTarget
+	 * @param  {number} combatTarget
+	 * @param  {number} seafaringTarget
+	 * @return {object}
+	 */
+	explain(combination, moraleTarget, combatTarget, seafaringTarget)
+	{
+		let stats = ['morale', 'combat', 'seafaring'];
+		let targets = {morale: moraleTarget, combat: combatTarget, seafaring: seafaringTarget};
+
+		let captain = combination[0];
+		let crew = combination[1];
+		let parts = combination[2];
+
+		let add = (rows, stat) => rows.reduce((total, row) => total + Number(row[stat] || 0), 0);
+
+		// A stat with no target is not a stat the voyage is asking about, and a
+		// percentage of nothing would read as a failure rather than a pass
+		let percent = (value, target) => target > 0 ? value / target * 100 : null;
+
+		let workings = {
+			captain: captain.name,
+			traits: (captain.traits || []).slice(),
+			crew: crew.map(member => member.type ? member.type.name : member.name),
+			parts: parts.map(part => part.name),
+			shipwright: this.shipwright ? this.shipwright.name : null,
+			solidarity: crew.solidarity,
+			solidarity_bearer: crew.solidarityBearer,
+			solidarity_value: crew.solidarityValue,
+			targets: targets,
+			stats: {},
+		};
+
+		for(let s = 0; s < stats.length; s++){
+			let stat = stats[s];
+
+			let fromCaptain = Number(captain[stat] || 0);
+			let fromCrew = add(crew, stat);
+			let fromParts = add(parts, stat);
+
+			let base = fromCaptain + fromCrew + fromParts;
+			let multiplier = captain.multiplier[stat];
+			let solidarity = crew.solidarity;
+
+			// What the ship's panel ought to read under each reading of it
+			let boosted = Math.floor(base * multiplier);
+
+			// The three ways the pieces can go together. `everything` is what
+			// this calculator does today; the other two are what the voyage
+			// screen would say if the Shipwright is already inside the panel, or
+			// if it is not landing on voyage stats at all.
+			let everything = Math.floor((base + solidarity) * multiplier);
+			let boostedThenSolidarity = boosted + solidarity;
+			let noMultiplier = base + solidarity;
+
+			workings.stats[stat] = {
+				from_captain: fromCaptain,
+				from_crew: fromCrew,
+				from_parts: fromParts,
+				base: base,
+				boosted: boosted,
+				multiplier: multiplier,
+				solidarity: solidarity,
+				totals: {
+					everything: everything,
+					boosted_then_solidarity: boostedThenSolidarity,
+					no_multiplier: noMultiplier,
+				},
+				percentages: {
+					everything: percent(everything, targets[stat]),
+					boosted_then_solidarity: percent(boostedThenSolidarity, targets[stat]),
+					no_multiplier: percent(noMultiplier, targets[stat]),
+				},
+			};
+		}
+
+		// The voyage takes the worst of the three stats, so each reading's
+		// answer is its own minimum — not the minimum of any one stat
+		workings.success = {};
+
+		['everything', 'boosted_then_solidarity', 'no_multiplier'].forEach(reading => {
+			let chances = stats
+				.map(stat => workings.stats[stat].percentages[reading])
+				.filter(chance => chance !== null);
+
+			workings.success[reading] = chances.length ? Math.min(Math.floor(Math.min(...chances)), 100) : 100;
+		});
+
+		return workings;
 	}
 }
