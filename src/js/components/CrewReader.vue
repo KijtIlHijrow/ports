@@ -14,6 +14,7 @@
 
 <script>
 	import RosterScanner from '../ports/scripts/RosterScanner.js';
+	import Reader from '../ports/scripts/CrewReader.js';
 	import { crewReader, rosterScanner } from '../ports/scripts/readers.js';
 
 	export default {
@@ -195,12 +196,26 @@
 			 * @return {void}
 			 */
 			applyToCaptain(id, result){
-				let captain = this.captains.find(captain => captain.id == id);
+				// The name on the panel outranks the row the mouse is over. The
+				// row is only where this captain is standing today, and a
+				// column that reorders between one read and the next files a
+				// captain's stats under whoever has taken their place — which is
+				// how Tuanku Silver came to be carrying Walter Teach's numbers,
+				// worth 185 morale and a voyage quoted eight percent high.
+				//
+				// Falls back to the row when the name cannot be placed, which is
+				// every captain the player has not named yet.
+				let named = Reader.matchCaptain(result.type && result.type.attempts, this.captains);
+				let captain = this.captains.find(captain => captain.id == (named === null ? id : named));
 
 				if(!captain){return;}
 
+				if(named !== null && named != id){
+					console.log(`CaptainRead  row ${id} reads as ${captain.name}, filing there instead`);
+				}
+
 				if(!captain.name.length){
-					captain.name = `Captain #${id}`;
+					captain.name = `Captain #${captain.id}`;
 				}
 
 				captain.morale = result.morale;
@@ -211,6 +226,8 @@
 				this.applyTraits(captain);
 
 				this.$root.save();
+
+				return captain;
 			},
 
 			/**
@@ -703,11 +720,10 @@
 
 				if(this.stable !== 2){return;}
 
-				this.applyToCaptain(tile.row, result);
-
 				// Named after applying, since a captain with no name of their own
-				// is given one there
-				let captain = this.captains.find(one => one.id == tile.row);
+				// is given one there — and since the read may have been filed
+				// against a different captain than the row it came from
+				let captain = this.applyToCaptain(tile.row, result);
 
 				// One line per captain rather than one per hover. There are only
 				// five of them and passing back over one is easily done, which

@@ -409,6 +409,12 @@ export default class CrewReader
 		if(captain){
 			type.name = 'captain';
 			type.found = true;
+
+			// The name off the panel, ungarbled as far as the OCR manages. A
+			// captain has no type to be recognised by, so without this the only
+			// thing saying which captain this is is which row of the column the
+			// mouse is over — and that column reorders.
+			type.attempts = this.nameAttempts(buffer, skin);
 		} else {
 			type = this.getType(buffer, skin, stats);
 		}
@@ -901,6 +907,90 @@ export default class CrewReader
 	 * @param  {array} attempts
 	 * @return {string|null}
 	 */
+	/**
+	 * Everything the OCR can make of the name line, unmatched
+	 *
+	 * getType() reads the same line but stops the moment it recognises a crew
+	 * type, which is no use for a captain: their name is whatever the player
+	 * called them and matches no list here. This gathers the raw attempts and
+	 * leaves the judging to whoever knows the names.
+	 *
+	 * Swept in the same brute-force way getType() sweeps it, and for the same
+	 * reason — the font is unreadable enough that where the line starts is not
+	 * predictable from its contents.
+	 *
+	 * @param  {ImageData} buffer
+	 * @param  {object} skin
+	 * @return {array}
+	 */
+	nameAttempts(buffer, skin){
+		let attempts = [];
+		let colors = (skin && skin.nameColors) ? skin.nameColors : ['orange'];
+		let baselines = [37, 36, 38];
+
+		for(let c = 0; c < colors.length; c++){
+			let color = this.colors[colors[c]];
+
+			for(let b = 0; b < baselines.length; b++){
+				for(let findX = 40; findX < 100; findX++){
+					let attempt = OCR.readLine(buffer, this.fonts.heavy, color, findX, baselines[b], true, true).text;
+
+					if(attempt && attempts.indexOf(attempt) === -1){attempts.push(attempt);}
+				}
+			}
+		}
+
+		return attempts;
+	}
+
+	/**
+	 * Which of the named captains the panel is showing
+	 *
+	 * Scored the way crew names are scored, against the names the player typed
+	 * rather than against a list of our own. A captain never named is not a
+	 * candidate: "Captain #4" is a placeholder, and matching a garbled read
+	 * against it would be matching noise to noise.
+	 *
+	 * Both gates matter. The floor rejects a read too poor to place, and the
+	 * margin rejects a read that fits two captains equally — "Silver Morgan"
+	 * and "Tuanku Silver" share a word, and picking between them on a truncated
+	 * read is how the stats got crossed over in the first place.
+	 *
+	 * @param  {array} attempts  from nameAttempts()
+	 * @param  {array} captains  {id, name}
+	 * @return {int|null}  the captain's id
+	 */
+	static matchCaptain(attempts, captains){
+		let named = (captains || []).filter(captain => {
+			return captain.name && !/^Captain #/.test(captain.name);
+		});
+
+		if(!attempts || !attempts.length || !named.length){return null;}
+
+		let scores = {};
+
+		attempts.forEach(attempt => {
+			let read = CrewReader.normalise(attempt);
+
+			if(read.length < 3){return;}
+
+			named.forEach(captain => {
+				let score = CrewReader.similarity(read, CrewReader.normalise(captain.name));
+
+				if(!(captain.id in scores) || score > scores[captain.id]){
+					scores[captain.id] = score;
+				}
+			});
+		});
+
+		let ids = Object.keys(scores).sort((a, b) => scores[b] - scores[a]);
+
+		if(!ids.length || scores[ids[0]] < 0.62){return null;}
+		if(ids.length > 1 && (scores[ids[0]] - scores[ids[1]]) < 0.1){return null;}
+
+		return Number(ids[0]);
+	}
+
 	matchCrewName(attempts, stats){
 		let scores = {};
 
