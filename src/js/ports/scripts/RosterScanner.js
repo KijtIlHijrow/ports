@@ -60,6 +60,18 @@ export default class RosterScanner
 		// about a third of the tile.
 		this.masked = 2;
 
+		// How much light and dark a cell has to hold before it counts as
+		// holding a portrait at all. The grid is walked as a fixed rectangle,
+		// so the cells past the end of the roster are bare panel and there is
+		// no art there to recognise — and a cell nothing matches was being
+		// offered up as a crew member worth hovering.
+		//
+		// Measured across the block averages this signs with, which flatten
+		// texture out of it: bare panel spreads 10, an unfilled seat in the
+		// ship's row spreads 51, and real portraits spread 165 to 199. Anything
+		// under this is not a portrait drawn badly, it is nothing.
+		this.flatness = 90;
+
 		// Mean per-channel difference. Further away than this is not the same
 		// portrait...
 		this.accept = 34;
@@ -304,6 +316,28 @@ export default class RosterScanner
 		}
 
 		return signature.length ? signature : null;
+	}
+
+	/**
+	 * How much light and dark a signature holds
+	 *
+	 * A portrait is a face against a border and spans most of the range. Bare
+	 * panel is one colour, and one colour signed at any offset is still one
+	 * colour — so this separates "nothing here" from "something here drawn in a
+	 * way we do not recognise" without needing to know what either looks like.
+	 *
+	 * @param  {array} signature
+	 * @return {int}
+	 */
+	static spread(signature){
+		let min = Infinity, max = -Infinity;
+
+		for(let i = 0; i < signature.length; i++){
+			if(signature[i] < min){min = signature[i];}
+			if(signature[i] > max){max = signature[i];}
+		}
+
+		return max - min;
 	}
 
 	/**
@@ -774,11 +808,18 @@ export default class RosterScanner
 		for(let row = 1; row <= this.rows; row++){
 			for(let column = this.captainColumn + 1; column <= this.columns; column++){
 				let signature = this.signature(buffer, column, row, tile);
-				let match = signature ? this.identify(signature, known) : null;
+
+				// Nothing drawn here. Judged before the portraits get a say:
+				// the nearest portrait to a flat cell is still some portrait,
+				// and letting one be named is how bare panel came to be pointed
+				// at as a crew member to go and hover.
+				let bare = signature ? RosterScanner.spread(signature) <= this.flatness : false;
+
+				let match = (signature && !bare) ? this.identify(signature, known) : null;
 
 				// What the tile looked like regardless of whether it cleared the
 				// gates, so a scan that names nothing can still say why
-				let near = signature ? this.nearest(signature, known) : null;
+				let near = (signature && !bare) ? this.nearest(signature, known) : null;
 
 				// Which of several identical crew this is, where the corner has
 				// been seen before
@@ -792,7 +833,14 @@ export default class RosterScanner
 					x: location.gridX + ((column - 1) * tile),
 					y: location.gridY + ((row - 1) * tile),
 					size: tile,
-					type: match ? match.name : '',
+					bare: bare,
+
+					// Bare cells answer as empty rather than as unknown. Empty
+					// is already understood everywhere that matters — nobody is
+					// aboard in it, it leaves room on the ship, and it is not a
+					// crew member to be found — where unknown means "might be
+					// anyone, go and look".
+					type: bare ? 'Empty' : (match ? match.name : ''),
 					distance: match ? match.distance : null,
 					nearest: near ? near.name : '',
 					nearestDistance: near ? near.distance : null,
