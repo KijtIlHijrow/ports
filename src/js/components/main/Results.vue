@@ -56,6 +56,31 @@
 
 				<p class="mt-1 opacity-75">Crew read as: {{ workings.crew.join(', ') }}.</p>
 
+				<table class="w-full mt-2">
+					<tr class="opacity-75">
+						<th class="text-left font-normal">Captain slot</th>
+						<th class="text-left font-normal">Name</th>
+						<th class="text-right font-normal">Lvl</th>
+						<th class="text-right font-normal">Morale</th>
+						<th class="text-right font-normal">Combat</th>
+						<th class="text-right font-normal">Seafaring</th>
+					</tr>
+					<tr v-for="captain in $root.captains">
+						<td class="text-left">{{ captain.id }}</td>
+						<td class="text-left">{{ captain.name || '—' }}</td>
+						<td class="text-right">{{ captain.level || '—' }}</td>
+						<td class="text-right">{{ captain.morale }}</td>
+						<td class="text-right">{{ captain.combat }}</td>
+						<td class="text-right">{{ captain.seafaring }}</td>
+					</tr>
+				</table>
+
+				<p class="mt-1 opacity-75">
+					Captains are filed by which row of the left-hand column they were read in, not by
+					name, so a column that has reordered since puts one captain's stats under another's
+					name. If the numbers against a name are not that captain's, that is what happened.
+				</p>
+
 				<p class="mt-1 opacity-75">
 					Whichever reading matches the voyage screen is the one to keep &mdash; but check the
 					crew above are the five actually aboard first, or the two numbers are answering
